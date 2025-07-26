@@ -11,8 +11,7 @@
 
 
 
-'NOTES
-'Created PUMGUARD_VB_Pos 26/07/2025
+'NOTEs
 
 Device = 18F2525
 
@@ -102,6 +101,23 @@ Declare LCD_Lines = 4
 Dim W_EncoderPos As Word
 Dim B_LastState  As Byte
 Dim B_General As Byte
+Dim B_Beep_Len As Byte
+Dim B_AState     As Byte
+Dim B_BState     As Byte
+Dim B_ButtonState As Byte
+Dim B_DebA       As Byte
+Dim B_DebB       As Byte
+Dim B_DebBtn     As Byte
+
+' initialise debounced states
+B_AState      = PORTB.1
+B_BState      = PORTB.2
+B_ButtonState = PORTB.6
+B_LastState   = (B_AState * 2) + B_BState
+B_DebA        = 0
+B_DebB        = 0
+B_DebBtn      = 0
+
 
 Clear                                   'Start clear
 
@@ -134,6 +150,7 @@ T0CONbits_TMR0ON = 1       ' start timer
 ; Interrupt Handler
 
 GoTo over_Interrupt
+' Interrupt routine
 ISR_Handler:
     Context Save
     Clrwdt                  ' in case watchdog enabled
@@ -143,23 +160,79 @@ ISR_Handler:
         TMR0L = 256-31
         INTCONbits_T0IF = 0
 
-        ' read current encoder state: bit1 = A, bit0 = B
+        ' debounce rotary encoder and button inputs
+        Dim B_NewA  As Byte
+        Dim B_NewB  As Byte
+        Dim B_NewBtn As Byte
+
+        B_NewA  = PORTB.1
+        B_NewB  = PORTB.2
+        B_NewBtn = PORTB.6
+
+        If B_NewA <> B_AState Then
+            Inc B_DebA
+            If B_DebA >= 100 Then
+                B_AState = B_NewA
+                B_DebA = 0
+            EndIf
+        Else
+            B_DebA = 0
+        EndIf
+
+        If B_NewB <> B_BState Then
+            Inc B_DebB
+            If B_DebB >= 100 Then
+                B_BState = B_NewB
+                B_DebB = 0
+            EndIf
+        Else
+            B_DebB = 0
+        EndIf
+
+        If B_NewBtn <> B_ButtonState Then
+            Inc B_DebBtn
+            If B_DebBtn >= 100 Then
+                B_ButtonState = B_NewBtn
+                B_DebBtn = 0
+            EndIf
+        Else
+            B_DebBtn = 0
+        EndIf
+
         Dim B_Curr As Byte
-        B_Curr = (PORTB.1 * 2) + PORTB.2
+        B_Curr = (B_AState * 2) + B_BState
 
         ' detect edges: Gray code sequence 00->01->11->10->00
         Dim B_Combined As Byte
         B_Combined = (B_LastState * 4) + B_Curr
         Select B_Combined
             Case 0b0001, 0b0111, 0b1110, 0b1000
-                Dec W_EncoderPos
-            Case 0b0010, 0b1011, 0b1101, 0b0100
                 Inc W_EncoderPos
+            Case 0b0010, 0b1011, 0b1101, 0b0100
+                Dec W_EncoderPos
         EndSelect
         B_LastState = B_Curr
     EndIf
 
+
+    'Piezzo
+    If B_Beep_Len > 0 Then
+        High _BUZZER
+        Dec B_Beep_Len
+    Else
+        Low _BUZZER    
+    EndIf   
+
+
+
     Context Restore
+
+
+
+
+
+
+
 over_Interrupt:
 
 
@@ -167,7 +240,14 @@ over_Interrupt:
 
 
 
-
+' Buzzer Startup Procedure
+Proc BuzzerStartup()
+  Dim cycle As Byte
+  For cycle = 1 To 5
+    P_Buzzer(2)
+    DelayMS 100
+  Next
+EndProc
 
 
 ' Main Program
@@ -188,12 +268,7 @@ P_LCD(3,1,"Runtime :hh:mm")
 P_LCD(4,1,"Press for MENU")
 DelayMS 100
 'HRSOut "~",13
-If _ENC_SW =0 Then
-    HRSOut "Set the time",13
-    P_SetDateTime()
-
-
-EndIf 
+If _ENC_SW=0 Then P_SetDateTime()
 GoTo Idle_Screen
 
 While 1 = 1
@@ -206,30 +281,35 @@ While 1 = 1
     EndIf    
 Wend
 End
-
-'-------------------------------------------------------------
-'PROCEDURES HERE
+'--------------------------------------------
+'        PROCEDURES HERE
+'--------------------------------------------
+Proc P_Buzzer(B_Beep As Byte)
+'beep for x ms based on the following format
+'1 = beep per RE click
+'2 = menu selection
+'3 = menu timeout
+Select B_Beep
+    Case 1
+        B_Beep_Len = 5
+    Case 2
+        B_Beep_Len = 50
+    Case 3
+        B_Beep_Len = 150
+EndSelect
+EndProc
+'--------------------------------------------
 Proc P_LCD(B_Ln As Byte, B_Pos As Byte, S_Data As String * 20)
     ' print data at the line and pos given
     Print At B_ln, B_pos, S_data
 EndProc
-'--------------------------------
-' Buzzer Startup Procedure
-Proc BuzzerStartup()
-  Dim cycle As Byte
-  For cycle = 1 To 5
-    High _BUZZER
-    DelayMS 100
-    Low _BUZZER
-    DelayMS 100
-  Next
-EndProc
 '--------------------------------------------
 ' Procedure: SetDateTime
 ' Uses rotary encoder on RB1/RB2 and button on RB6 to set
-' DD/MM/YY and HH:MM:SS on a DS3231M RTC
+'   DD/MM/YY and HH:MM:SS on a DS3231M RTC
 '
 Proc P_SetDateTime()
+    Cls
     Dim B_Sec    As Byte
     Dim B_Min    As Byte
     Dim B_Hour   As Byte
@@ -242,72 +322,87 @@ Proc P_SetDateTime()
     ' Read current time from RTC (address $68)
     I2CIn PORTC.4, PORTC.3, $D1, $00, [B_Sec, B_Min, B_Hour, B_Day, B_Date, B_Month, B_Year]
 
-    B_Sec   = ((B_Sec / 16) * 10)  + (B_Sec & %00001111)
-    B_Min   = ((B_Min / 16) * 10)  + (B_Min & %00001111)
-    B_Hour  = ((B_Hour / 16) * 10) + (B_Hour & %00001111)
-    B_Date  = ((B_Date / 16) * 10) + (B_Date & %00001111)
-    B_Month = ((B_Month / 16) * 10)+ (B_Month & %00001111)
-    B_Year  = ((B_Year / 16) * 10) + (B_Year & %00001111)
+    B_Sec   = ((B_Sec / 16) * 10)
+    B_Sec = B_Sec  + (B_Sec & %00001111)
+    B_Min   = ((B_Min / 16) * 10)
+    B_Min = B_Min  + (B_Min & %00001111)
+    B_Hour  = ((B_Hour / 16) * 10)
+    B_Hour = B_Hour + (B_Hour & %00001111)
+    B_Date  = ((B_Date / 16) * 10)
+    B_Date = B_Date + (B_Date & %00001111)
+    B_Month = ((B_Month / 16) * 10)
+    B_Month = B_Month + (B_Month & %00001111)
+    B_Year  = ((B_Year / 16) * 10)
+    B_Year = B_Year + (B_Year & %00001111)
 
     W_LastPos = W_EncoderPos
-    SetField B_Date, 1, 31, W_LastPos
-    SetField B_Month, 1, 12, W_LastPos
-    SetField B_Year, 0, 99, W_LastPos
-    SetField B_Hour, 0, 23, W_LastPos
-    SetField B_Min, 0, 59, W_LastPos
-    SetField B_Sec, 0, 59, W_LastPos
+    Cls
+    Print At 1,1,"Set Date & Time"
 
-    B_Sec   = B_Sec / 10                'seconds
-    B_Sec = B_Sec * 16
-    B_Sec = B_Sec   + (B_Sec // 10)
+    'Print At 3, 1, Dec2 B_Date, ":/", Dec2 B_Month, "/", Dec2 B_Year," ", Dec2 B_Hour, ":", Dec2 B_Min, ":", Dec2 B_Sec    
+    SetField (B_Date, 1, 31, W_LastPos, 3, 1)
+    SetField (B_Month, 1, 12, W_LastPos, 3, 5)
+    SetField (B_Year, 0, 99, W_LastPos, 3, 8)
+    SetField (B_Hour, 0, 23, W_LastPos, 3,11)
+    SetField (B_Min, 0, 59, W_LastPos, 3,14)
+    SetField (B_Sec, 0, 59, W_LastPos, 3,17)
 
-    B_Min   = B_Min / 10                'minutes
-    B_Min = B_Min * 16)
+    B_Sec = ((B_Sec / 10) * 16)
+    B_Sec = B_Sec + (B_Sec // 10)
+    B_Min   = ((B_Min / 10) * 16)
     B_Min = B_Min + (B_Min // 10)
-
-    B_Hour  = B_Hour / 10               'hours
-    B_Hour = B_Hour * 16
-    B_Hour = B_Hour  + (B_Hour // 10)        
-
-    B_Date  = B_Date / 10               'date
-    B_Date = B_Date * 16
-    B_Date = B_Date  + (B_Date // 10)     
-
-    B_Month = B_Month / 10              'month
-    B_Month = B_Month * 16
+    B_Hour  = ((B_Hour / 10) * 16)
+    B_Hour = B_Hour + (B_Hour // 10)
+    B_Date  = ((B_Date / 10) * 16)
+    B_Date = B_Date + (B_Date // 10)
+    B_Month = ((B_Month / 10) * 16)
     B_Month = B_Month + (B_Month // 10)
-    
-    B_Year  = B_Year / 10               'year
-    B_Year = B_Year * 16
-    B_Year = B_Year  + (B_Year // 10)        
-        
-
+    B_Year  = ((B_Year / 10) * 16)
+    B_Year = B_Year + (B_Year // 10)
 
     I2COut PORTC.4, PORTC.3, $D0, $00, [B_Sec, B_Min, B_Hour, B_Day, B_Date, B_Month, B_Year]
 EndProc
 
 '--------------------------------------------
 ' Helper procedure: adjust a value with the rotary encoder
-Proc SetField(ByRef B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word)
-    While 1=1
+Proc SetField(ByRef B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word, B_Row As Byte, B_Col As Byte)
+    P_Buzzer(2)
+    HRSOut "B_Value",13
+    HRSOut "B_Min = ",Dec3 B_Min,13
+    HRSOut "B_Max = ",Dec3 B_Max,13
+    HRSOut "Lastpos = ",Dec5 W_LastPos,13
+    HRSOut "B_Row = ",Dec3 B_Row,13
+    HRSOut "B_Col = ",Dec3 B_Col,13
+    HRSOut "----------------------",13 
+
+    Print At B_Row,3,"/"
+    Print At B_Row,6,"/"
+    Print At B_Row,9," "
+    Print At B_Row,12,":"
+    Print At B_Row,15,":"
+
+    While 1 = 1
         If W_EncoderPos > W_LastPos Then
+            P_Buzzer(1)
             Inc B_Value
             If B_Value > B_Max Then B_Value = B_Min
             W_LastPos = W_EncoderPos
         EndIf
 
         If W_EncoderPos < W_LastPos Then
+            P_Buzzer(1)
             Dec B_Value
             If B_Value < B_Min Then B_Value = B_Max
             W_LastPos = W_EncoderPos
         EndIf
 
-        ' TODO: Display B_Value to the user here
+        Print At B_Row, B_Col, Dec2 B_Value
 
         If PORTB.6 = 0 Then          ' button pressed
             DelayMS 20               ' debounce
             While PORTB.6 = 0 : Wend
-            Exit
+            GoTo Exit_SetField
         EndIf
     Wend
+    Exit_SetField:
 EndProc
