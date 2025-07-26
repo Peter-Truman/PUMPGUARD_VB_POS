@@ -187,7 +187,13 @@ P_LCD(2,1,"XXX PSI - RUNNING")
 P_LCD(3,1,"Runtime :hh:mm")
 P_LCD(4,1,"Press for MENU")
 DelayMS 100
-HRSOut "~",13
+'HRSOut "~",13
+If _ENC_SW =0 Then
+    HRSOut "Set the time",13
+    P_SetDateTime()
+
+
+EndIf 
 GoTo Idle_Screen
 
 While 1 = 1
@@ -217,4 +223,91 @@ Proc BuzzerStartup()
     Low _BUZZER
     DelayMS 100
   Next
+EndProc
+'--------------------------------------------
+' Procedure: SetDateTime
+' Uses rotary encoder on RB1/RB2 and button on RB6 to set
+' DD/MM/YY and HH:MM:SS on a DS3231M RTC
+'
+Proc P_SetDateTime()
+    Dim B_Sec    As Byte
+    Dim B_Min    As Byte
+    Dim B_Hour   As Byte
+    Dim B_Day    As Byte
+    Dim B_Date   As Byte
+    Dim B_Month  As Byte
+    Dim B_Year   As Byte
+    Dim W_LastPos As Word
+
+    ' Read current time from RTC (address $68)
+    I2CIn PORTC.4, PORTC.3, $D1, $00, [B_Sec, B_Min, B_Hour, B_Day, B_Date, B_Month, B_Year]
+
+    B_Sec   = ((B_Sec / 16) * 10)  + (B_Sec & %00001111)
+    B_Min   = ((B_Min / 16) * 10)  + (B_Min & %00001111)
+    B_Hour  = ((B_Hour / 16) * 10) + (B_Hour & %00001111)
+    B_Date  = ((B_Date / 16) * 10) + (B_Date & %00001111)
+    B_Month = ((B_Month / 16) * 10)+ (B_Month & %00001111)
+    B_Year  = ((B_Year / 16) * 10) + (B_Year & %00001111)
+
+    W_LastPos = W_EncoderPos
+    SetField B_Date, 1, 31, W_LastPos
+    SetField B_Month, 1, 12, W_LastPos
+    SetField B_Year, 0, 99, W_LastPos
+    SetField B_Hour, 0, 23, W_LastPos
+    SetField B_Min, 0, 59, W_LastPos
+    SetField B_Sec, 0, 59, W_LastPos
+
+    B_Sec   = B_Sec / 10                'seconds
+    B_Sec = B_Sec * 16
+    B_Sec = B_Sec   + (B_Sec // 10)
+
+    B_Min   = B_Min / 10                'minutes
+    B_Min = B_Min * 16)
+    B_Min = B_Min + (B_Min // 10)
+
+    B_Hour  = B_Hour / 10               'hours
+    B_Hour = B_Hour * 16
+    B_Hour = B_Hour  + (B_Hour // 10)        
+
+    B_Date  = B_Date / 10               'date
+    B_Date = B_Date * 16
+    B_Date = B_Date  + (B_Date // 10)     
+
+    B_Month = B_Month / 10              'month
+    B_Month = B_Month * 16
+    B_Month = B_Month + (B_Month // 10)
+    
+    B_Year  = B_Year / 10               'year
+    B_Year = B_Year * 16
+    B_Year = B_Year  + (B_Year // 10)        
+        
+
+
+    I2COut PORTC.4, PORTC.3, $D0, $00, [B_Sec, B_Min, B_Hour, B_Day, B_Date, B_Month, B_Year]
+EndProc
+
+'--------------------------------------------
+' Helper procedure: adjust a value with the rotary encoder
+Proc SetField(ByRef B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word)
+    While 1=1
+        If W_EncoderPos > W_LastPos Then
+            Inc B_Value
+            If B_Value > B_Max Then B_Value = B_Min
+            W_LastPos = W_EncoderPos
+        EndIf
+
+        If W_EncoderPos < W_LastPos Then
+            Dec B_Value
+            If B_Value < B_Min Then B_Value = B_Max
+            W_LastPos = W_EncoderPos
+        EndIf
+
+        ' TODO: Display B_Value to the user here
+
+        If PORTB.6 = 0 Then          ' button pressed
+            DelayMS 20               ' debounce
+            While PORTB.6 = 0 : Wend
+            Exit
+        EndIf
+    Wend
 EndProc
