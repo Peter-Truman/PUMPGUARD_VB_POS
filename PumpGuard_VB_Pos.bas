@@ -270,15 +270,7 @@ DelayMS 100
 If _ENC_SW=0 Then P_SetDateTime()
 GoTo Idle_Screen
 
-While 1 = 1
-    Print At 2,1, "Enc= ",Dec5 W_EncoderPos 
-    DelayMS 10
-    If _ENC_SW =0 Then
-        Print At 4,1, "Pressed     "
-    Else
-        Print At 4,1, "Not Pressed "
-    EndIf    
-Wend
+
 End
 '--------------------------------------------
 '        PROCEDURES HERE
@@ -290,7 +282,7 @@ Proc P_Buzzer(B_Beep As Byte)
 '3 = menu timeout
 Select B_Beep
     Case 1
-        B_Beep_Len = 5
+        B_Beep_Len = 15
     Case 2
         B_Beep_Len = 50
     Case 3
@@ -366,7 +358,7 @@ EndProc
 ' Helper procedure: adjust a value with the rotary encoder
 Proc SetField(ByRef B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word, B_Row As Byte, B_Col As Byte)
     P_Buzzer(2)
-    HRSOut "B_Value",13
+    HRSOut "B_Value",B_Value,13
     HRSOut "B_Min = ",Dec3 B_Min,13
     HRSOut "B_Max = ",Dec3 B_Max,13
     HRSOut "Lastpos = ",Dec5 W_LastPos,13
