@@ -55,6 +55,7 @@ ADCON1 = $0F       ' All pins digital
 
 All_Digital = True
 Declare Xtal = 32
+Declare PORTB_Pullups=On
 
 'Definition
 Symbol _BUZZER  = PORTC.2
@@ -127,14 +128,14 @@ Symbol LONG_PRESS = 2000  ' 2 seconds for long press (in ms)
 Symbol I2C_ADDR_DS3231 = $D0  ' DS3231 I2C address
 
 
-' Timer0 configuration: prescaler 1:64 for 1ms tick @ 8MHz
+' Timer0 configuration: prescaler 1:64 for 1ms tick @ 32MHz
 T0CONbits_T0PS2 = 1        ' \ prescaler 1:64
 T0CONbits_T0PS1 = 0        '  |
 T0CONbits_T0PS0 = 0        ' /
 T0CONbits_PSA  = 0         ' assign prescaler
 T0CONbits_T0CS  = 0        ' internal clock
 T0CONbits_T08BIT = 1       ' 8-bit mode
-TMR0L = 256-31             ' preload for 1ms (31 counts)
+TMR0L = 256-125            ' preload for 1ms (125 counts)
 
 '--------------------------------------------
 ' Interrupt setup
@@ -157,7 +158,7 @@ ISR_Handler:
 
     If INTCONbits_T0IF = 1 Then
         ' reload timer for 1ms
-        TMR0L = 256-31
+        TMR0L = 256-125
         INTCONbits_T0IF = 0
 
         ' debounce rotary encoder and button inputs
@@ -171,7 +172,7 @@ ISR_Handler:
 
         If B_NewA <> B_AState Then
             Inc B_DebA
-            If B_DebA >= 100 Then
+            If B_DebA >= 8 Then
                 B_AState = B_NewA
                 B_DebA = 0
             EndIf
@@ -181,7 +182,7 @@ ISR_Handler:
 
         If B_NewB <> B_BState Then
             Inc B_DebB
-            If B_DebB >= 100 Then
+            If B_DebB >= 8 Then
                 B_BState = B_NewB
                 B_DebB = 0
             EndIf
@@ -191,7 +192,7 @@ ISR_Handler:
 
         If B_NewBtn <> B_ButtonState Then
             Inc B_DebBtn
-            If B_DebBtn >= 100 Then
+            If B_DebBtn >= 16 Then
                 B_ButtonState = B_NewBtn
                 B_DebBtn = 0
             EndIf
@@ -207,14 +208,12 @@ ISR_Handler:
         B_Combined = (B_LastState * 4) + B_Curr
         Select B_Combined
             Case 0b0001, 0b0111, 0b1110, 0b1000
-                Inc W_EncoderPos
-            Case 0b0010, 0b1011, 0b1101, 0b0100
                 Dec W_EncoderPos
+            Case 0b0010, 0b1011, 0b1101, 0b0100
+                Inc W_EncoderPos
         EndSelect
         B_LastState = B_Curr
     EndIf
-
-
     'Piezzo
     If B_Beep_Len > 0 Then
         High _BUZZER
