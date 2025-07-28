@@ -116,7 +116,7 @@ Dim B_Date As Byte
 Dim B_Month As Byte
 Dim B_Year As Byte
 Dim B_BeepLen As Byte
-
+Dim b_Isolate As Bit
 
 Clear                                   'Start clear
 
@@ -170,7 +170,7 @@ ISR_Handler:
 
         If B_NewA <> B_AState Then
             Inc B_DebA
-            If B_DebA >= 50 Then
+            If B_DebA >= 75 Then
                 B_AState = B_NewA
                 B_DebA = 0
             EndIf
@@ -180,7 +180,7 @@ ISR_Handler:
 
         If B_NewB <> B_BState Then
             Inc B_DebB
-            If B_DebB >= 50 Then
+            If B_DebB >= 75 Then
                 B_BState = B_NewB
                 B_DebB = 0
             EndIf
@@ -190,7 +190,7 @@ ISR_Handler:
 
         If B_NewBtn <> B_ButtonState Then
             Inc B_DebBtn
-            If B_DebBtn >= 16 Then
+            If B_DebBtn >= 75 Then
                 B_ButtonState = B_NewBtn
                 B_DebBtn = 0
             EndIf
@@ -204,12 +204,20 @@ ISR_Handler:
         ' detect edges: Gray code sequence 00->01->11->10->00
         Dim B_Combined As Byte
         B_Combined = (B_LastState * 4) + B_Curr
-        Select B_Combined
-            Case 0b0001, 0b0111, 0b1110, 0b1000
-                Dec W_EncoderPos
-            Case 0b0010, 0b1011, 0b1101, 0b0100
-                Inc W_EncoderPos
-        EndSelect
+
+
+        'Isolate changes here (to avoid changes while pressing the knob)
+        If b_Isolate=0 Then 
+            Select B_Combined
+                Case 0b0001, 0b0111, 0b1110, 0b1000
+                    Dec W_EncoderPos
+                Case 0b0010, 0b1011, 0b1101, 0b0100
+                    Inc W_EncoderPos
+            EndSelect
+        EndIf
+
+
+
         B_LastState = B_Curr
     EndIf
 
@@ -237,15 +245,15 @@ DelayMS 500
 'B_Year=25
 
 'P_WriteTime()
-
+P_Startup()
 DelayMS 100
 P_ReadTime()
 HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year,"  ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second,13
 
 ' Main Program
 Main:
-BuzzerStartup()
 Cls                   ' Clear the LCD using the cls command
+DelayMS 10
 HRSOut "Startup",13
 P_LCD(1,6,"IRRISYS")
 P_LCD(2,1,"FW Ver 1.0")
@@ -256,19 +264,19 @@ Cls
 'write the current time as 0's
 'P_WriteTime()
 Idle_Screen:          'Main display
-P_LCD(1,1,"Test RTC")
 
 P_ReadTime()            'get the time (should be in global vars)
 'hrsout "Current time ="
 
 DelayMS 100
-HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year," ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second, 13
+'HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year," ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second, 13
 While 1 = 1
-    P_LCD(1,1,"Main Screen")
     P_ReadTime()
-    P_LCD(3,1,Str$(Dec2 B_Date)+"/"+Str$(Dec2 B_Month)+"/"+Str$(Dec2 B_Year)+" "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
+    P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
+    P_LCD(2,1,"000psi     No Flow")
+    P_LCD(4,1,"READY") 
+    If B_ButtonState =0 Then P_MainMen()
     DelayMS 100
-    If _ENC_SW =0 Then P_SetDateTime()
 Wend
 End
 '--------------------------------------------
@@ -284,15 +292,16 @@ EndProc
 '   DD/MM/YY and HH:MM:SS on a DS3231M RTC
 '
 Proc P_SetDateTime()
-    P_Beep(2)                                                       'Beep In
-    While _ENC_SW = 0 :DelayMS 10: Wend: DelayMS 50
+    Retry:
+    P_Beep(3)                                                       'Beep In
+    P_Debounce()
     Dim W_LastPos As Word
-
+    DelayMS 500
     HRSOut "P_SetDateTime()",13
     P_LCD(1,1,"Set Date and Time")
     P_ReadTime()                         ' Read current time from RTC (address $68)
-    P_LCD(3,1,Str$(Dec2 B_Date)+"/"+Str$(Dec2 B_Month)+"/"+Str$(Dec2 B_Year)+" "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
-    
+    P_LCD(3,1,Str$(Dec2 B_Date)+"/MM/YY HH:MM:SS")
+ 
     'Date
     B_Date = P_SetField(3,1,2,B_Date,1,31,W_LastPos)       'Date       
     P_LCD(3,1,Str$(Dec2 B_Date)+"/"+Str$(Dec2 B_Month))
@@ -316,6 +325,18 @@ Proc P_SetDateTime()
     'Second
     B_Second = P_SetField(3,16,2,B_Second,0,59,W_LastPos)   'Second         
     P_LCD(3,16,Str$(Dec2 B_Second))
+    
+    'check if ok to continue   (ASCII 174 for back arrow, 175 for forward arrow)
+    If P_Ok(W_LastPos)=0 Then    'try again
+        P_Retry()
+        HRSOut "Retry",13
+        Cls
+        DelayMS 250
+        GoTo Retry
+    EndIf
+
+       
+    
 
     'ok - unless timed our or early exit, write the time
     P_WriteTime()
@@ -326,9 +347,10 @@ EndProc
 ' Helper procedure: adjust a value with the rotary encoder
 Proc P_SetField(B_Ln As Byte, B_col As Byte,B_Zero As Byte,B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word), Word
     'line, col,leading 0, current val, min,, max and RE lastpos
-    While _ENC_SW =0:DelayMS 10: Wend                               'debounce
-    DelayMS 100
-    HRSOut "P_SetField",13
+    P_Debounce()
+    'While _ENC_SW =0:DelayMS 10: Wend: DelayMS 100                             'debounce
+   
+    'HRSOut "P_SetField",13
     While 1 =1
         If W_EncoderPos > W_LastPos Then
             P_Beep(1)
@@ -345,6 +367,7 @@ Proc P_SetField(B_Ln As Byte, B_col As Byte,B_Zero As Byte,B_Value As Byte, B_Mi
         EndIf
 
         'Display B_Value to the user here
+   
         Select b_Zero
             Case 2  'Dec2
                 P_LCD(B_Ln,B_col,Str$(Dec2 B_Value)) 
@@ -353,15 +376,47 @@ Proc P_SetField(B_Ln As Byte, B_col As Byte,B_Zero As Byte,B_Value As Byte, B_Mi
             Case 5  'Dec5 
                 P_LCD(B_Ln,B_col,Str$(Dec5 B_Value)) 
         EndSelect        
-        If _ENC_SW = 0 Then          ' button pressed
-            DelayMS 20               ' debounce
-            While _ENC_SW = 0 :DelayMS 100: Wend: DelayMS 50
+        If B_ButtonState = 0 Then          ' button pressed
+            P_Beep(2) 
+            While B_ButtonState = 0 :DelayMS 100: Wend: DelayMS 50
             GoTo Exit_P_SetField:
         EndIf
-        DelayMS 50
+        DelayMS 75
     Wend
     Exit_P_SetField:
-    Result = B_Value                                        'return a value
+    Result = B_Value                       'return a value
+EndProc
+'---------------------------------------------------------
+Proc P_Debounce()
+While B_ButtonState =0:DelayMS 10: Wend: DelayMS 100      
+EndProc
+'---------------------------------------------------------
+Proc P_Ok(W_LastPos As Word),Bit             'always on the last row            
+    Dim b_flag As Bit
+    P_Debounce()
+    While 1=1
+        If b_flag=0 Then
+            Print At 4,1,"   [OK]    Retry "
+            Result = 1
+        Else
+            Print At 4,1,"    OK    [Retry]"
+            Result = 0
+        EndIf
+        If W_EncoderPos <> W_LastPos Then
+            P_Beep(2)
+            b_flag = ~b_flag
+            W_LastPos = W_EncoderPos
+        EndIf
+ 
+        If _ENC_SW = 0 Then          ' button pressed
+            P_Beep(2) 
+            While _ENC_SW = 0 :DelayMS 10: Wend: DelayMS 50
+            GoTo Exit_P_Ok:
+        EndIf
+        DelayMS 150        
+    Wend
+    Exit_P_Ok:    
+    HRSOut "Result = ",Dec1 b_flag,13
 EndProc
 '---------------------------------------------------------
 Proc B2BCD(B_convert As Byte),Byte
@@ -440,13 +495,13 @@ HRSOut "--------------",13
 
     B_Day = 1
 
-HRSOut "BCD Write values Seconds = ",Dec3 B_Second,13
-HRSOut "BCD Write values Hours = ",Dec3 B_Hour,13
-HRSOut "BCD Write values Minutes = ",Dec3 B_Minute,13
-HRSOut "BCD Write values Date = ",Dec3 B_Date,13
-HRSOut "BCD Write values Month = ",Dec3 B_Month,13
-HRSOut "BCD Write values Year = ",Dec3 B_Year,13
-HRSOut "=========================",13
+'HRSOut "BCD Write values Seconds = ",Dec3 B_Second,13
+'HRSOut "BCD Write values Hours = ",Dec3 B_Hour,13
+'HRSOut "BCD Write values Minutes = ",Dec3 B_Minute,13
+'HRSOut "BCD Write values Date = ",Dec3 B_Date,13
+'HRSOut "BCD Write values Month = ",Dec3 B_Month,13
+'HRSOut "BCD Write values Year = ",Dec3 B_Year,13
+'HRSOut "=========================",13
 
     BusOut WriteRCT, 0, [B_Second, B_Minute, B_Hour, B_Day, B_Date, B_Month, B_Year]
 
@@ -458,9 +513,9 @@ HRSOut "=========================",13
     P_BCDConvert (B_Month, 0)
     P_BCDConvert (B_Year, 0)
 
-HRSOut "Readback",13
-HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year," ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second, 13
-HRSOut "--------------",13
+'HRSOut "Readback",13
+'HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year," ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second, 13
+'HRSOut "--------------",13
 
 
 EndProc
@@ -469,21 +524,135 @@ Proc P_Beep(B_Len As Byte)
     'sets the buzzer going - decriment in interrupt
     Select B_len
         Case 1
-            B_BeepLen=5
+            B_BeepLen=1
         Case 2
             B_BeepLen=50
-        Case 2
+        Case 3
             B_BeepLen=100
+        Case 4
+            B_BeepLen=200        
     EndSelect
 EndProc
 '--------------------------------------------
 ' Buzzer Startup Procedure
-Proc BuzzerStartup()
+Proc P_Startup()
   Dim cycle As Byte
   For cycle = 1 To 5
     P_Beep(3)
     DelayMS 100
   Next
 EndProc
+'--------------------------------------------
+' Retry Procedure
+Proc P_Retry()
+  Dim cycle As Byte
+  For cycle = 1 To 5
+    P_Beep(2)
+    DelayMS 100
+  Next
+EndProc
+'--------------------------------------------
+' Procedure: P_PrintWord
+' Prints one of the custom menu words on the LCD
+'  Index: 1=OK, 2=Retry, 3=[OK], 4=[Retry]
+Proc P_PrintWord(B_Index As Byte, B_Row As Byte, B_Col As Byte)
+    Dim W_Addr As Word
+    Select B_Index
+        Case 1
+            W_Addr = Word_OK
+        Case 2
+            W_Addr = Word_Retry
+        Case 3
+            W_Addr = Word_OK_Box
+        Case 4
+            W_Addr = Word_Retry_Box
+        Else
+            Exit
+    EndSelect
+    Print At B_Row, B_Col, CStr W_Addr
+EndProc
+'-----------------------------------------------
+Proc P_MainMen(),Byte                                                  'this will be the main menu screen - 3 options
+    Cls
+    P_Beep(3)                                                       'Beep In
+    P_Debounce()
+    Dim W_LastPos As Word
+    Dim B_Option As Byte
+    Dim S_Op1 As String * 18
+    Dim S_Op2 As String * 18    
+    Dim S_Op3 As String * 18
+    Dim B_End As Byte
+    S_Op1="Main Menu"
+    S_Op2="Utility Menu"
+    S_Op3="Setup Menu"
 
 
+
+    B_Option = 1                                                    'start at pos 1
+    DelayMS 500                                                     'Standard entry
+    'draw the main screen
+    P_LCD(1,6,"OPTIONS")
+    P_LCD(2,2,S_Op1)
+    P_LCD(3,2,S_Op2)
+    P_LCD(4,2,S_Op3)
+    
+    'now set the cursor
+
+    While 1=1
+        Select B_Option
+            Case 1
+                P_LCD(2,1,"[")
+                P_LCD(3,1," ")                
+                P_LCD(4,1," ")
+                B_End=Len(S_Op1)+1
+                P_LCD(2,B_End,"]")
+                B_End=Len(S_Op2)+1                
+                P_LCD(3,B_End," ")                
+                B_End=Len(S_Op3)+1                
+                P_LCD(4,B_End," ")                  
+            Case 2
+                P_LCD(2,1," ")
+                P_LCD(3,1,"[")                
+                P_LCD(4,1," ")
+                B_End=Len(S_Op1)+1
+                P_LCD(2,B_End," ")
+                B_End=Len(S_Op2)+1                
+                P_LCD(3,B_End,"]")                
+                B_End=Len(S_Op3)+1                
+                P_LCD(4,B_End," ")             
+            Case 3
+                P_LCD(2,1," ")
+                P_LCD(3,1," ")                
+                P_LCD(4,1,"[")
+                B_End=Len(S_Op1)+1
+                P_LCD(2,B_End," ")
+                B_End=Len(S_Op2)+1                
+                P_LCD(3,B_End," ")                
+                B_End=Len(S_Op3)+1                
+                P_LCD(4,B_End,"]")              
+        EndSelect
+
+        If W_EncoderPos > W_LastPos Then
+            P_Beep(1)
+            Inc B_Option
+            If B_Option > 3 Then B_Option = 1
+            W_LastPos = W_EncoderPos
+        EndIf
+         If W_EncoderPos < W_LastPos Then
+            P_Beep(1)
+            Dec B_Option
+            If B_Option < 1 Then B_Option = 3
+            W_LastPos = W_EncoderPos
+        EndIf
+        If B_ButtonState = 0 Then          ' button pressed
+            P_Beep(2) 
+            While B_ButtonState = 0 :DelayMS 100: Wend: DelayMS 50
+            GoTo Exit_P_MainMen:
+        EndIf
+        DelayMS 200
+    Wend
+    Exit_P_MainMen:
+    HRSOut "B_Option = ",Dec3 B_Option,13
+    Result = B_Option
+    Cls
+EndProc
