@@ -122,36 +122,6 @@ Dim B_Selected As Byte
 
 Clear                                   'Start clear
 
-'' Menu item strings stored in flash
-'Menu_High_Pressure:      Cdata "High Pressure", 0
-'Menu_High_Pressure_BP:   Cdata "High Pressure BP", 0
-'Menu_Low_Pressure:       Cdata "Low Pressure", 0
-'Menu_Primary_LP_BP:      Cdata "Primary LP BP", 0
-'Menu_Secondary_LP_BP:    Cdata "Secondary LP BP", 0
-'Menu_Use_Clock:          Cdata "Use Clock?", 0
-'Menu_Use_DDV:            Cdata "Use DDV?", 0
-'Menu_Use_Flow_Switch:    Cdata "Use Flow Switch?", 0
-'Menu_Use_Flow_Rate:      Cdata "Use Flow Rate?", 0
-'Menu_Use_Flow_Volume:    Cdata "Use Flow Volume?", 0
-
-'' Table of menu item addresses
-'Menu_Table:
-'Cdata Word Menu_High_Pressure, Menu_High_Pressure_BP, Menu_Low_Pressure,
-'                Menu_Primary_LP_BP, Menu_Secondary_LP_BP, Menu_Use_Clock,
-'                Menu_Use_DDV, Menu_Use_Flow_Switch, Menu_Use_Flow_Rate,
-'                Menu_Use_Flow_Volume
-
-
-
-
-
-
-
-
-
-
-
-
 
 ' Constants
 
@@ -192,7 +162,7 @@ ISR_Handler:
         TMR0L = 256-125
         INTCONbits_T0IF = 0
         Inc B_RE_Count                                              'check the RE every 10 ms
-        If B_RE_Count>5 Then 
+        If B_RE_Count>8 Then 
             ' debounce rotary encoder and button inputs
             Dim B_NewA  As Byte
             Dim B_NewB  As Byte
@@ -313,7 +283,7 @@ While 1 = 1
     P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
     P_LCD(2,1,"000psi     No Flow")
     P_LCD(4,1,"READY") 
-    If B_ButtonState =0 Then P_MenuSelect(10)
+    If B_ButtonState =0 Then P_MenuSelect(10,12,3)  'call the menu - index 10-12, items to display
     DelayMS 100
 Wend
 End
@@ -697,39 +667,59 @@ Proc P_Title(B_Index As Byte),String * 18
     EndSelect
 EndProc
 '--------------------------------------------
-' Procedure: P_MenuSelect
-' Shows a list of items on a 4-line LCD window and returns the
-' selected item number (1..B_Count). Items are stored as a Flash16
-' table holding addresses of null terminated strings.
-Proc P_MenuSelect(B_Count As Byte), Byte
+'--------------------------------------------
+' Procedure: ShowMenu
+' Presents the configuration menu and returns the
+' selected entry number
+Proc ShowMenu(), Byte
+    Result = P_MenuSelect(10)
+EndProc
+
+'--------------------------------------------
+'Procedure: P_MenuSelect
+'Shows a list of items on a 4-line LCD window and returns the
+'Choose items in this group
+'selected item number (1..B_Count). Titles are read using P_Title.
+Proc P_MenuSelect(B_Group As Byte B_Count As Byte), Byte
     Cls
-    P_Beep(3)
+    P_Beep(3)                                                       'Beep In
     P_Debounce()
     Dim B_Index   As Byte
     Dim B_First   As Byte
     Dim B_I       As Byte
-    Dim W_Addr    As Word
     Dim W_LastPos As Word
-    Dim S_Title As String * 18
+    Dim S_Line    As String * 18
+    Dim B_Len     As Byte
+
     B_Index = 0
-    B_First = 0
     W_LastPos = W_EncoderPos
     Cls
 
-    While 1=1
+    While 1 = 1 
+        ' adjust window start based on current index
+        B_First = B_Index - 3
+        If B_First < 0 Then
+            B_First = 0
+        EndIf
+        If B_First > (B_Count - 4) Then
+            B_First = B_Count - 4
+        EndIf
+
         ' display current window
         For B_I = 0 To 3
-            S_Title=P_Title(B_Count)                                'which item to display            
             If (B_First + B_I) < B_Count Then
-                'W_Addr = Cread16 W_Table[B_First + B_I]
+                S_Line = P_Title(B_First + B_I + 1)
+                B_Len  = Len(S_Line)
+                Print At B_I+1, 0, "                    "
                 If (B_First + B_I) = B_Index Then
-                    Print At B_I+1, 0, ">"
+                    Print At B_I+1, 1, "["
+                    Print At B_I+1, 1+1, S_Line
+                    Print At B_I+1, B_Len + 2, "]"
                 Else
-                    Print At B_I+1, 0, " "
+                    Print At B_I+1, 1+1, S_Line
                 EndIf
-                Print At B_I+1,1,P_Title(B_Index)
             Else
-                Print At B_I+1,1,P_Title(B_Index)
+                Print At B_I+1, 1, "                    "
             EndIf
         Next
 
@@ -751,15 +741,6 @@ Proc P_MenuSelect(B_Count As Byte), Byte
             W_LastPos = W_EncoderPos
         EndIf
 
-        ' shift window if needed
-        If B_Index >= (B_First + 4) Then
-            B_First = B_Index - 3
-        EndIf
-
-        If B_Index < B_First Then
-            B_First = B_Index
-        EndIf
-
         ' button confirms selection
         If B_ButtonState = 0 Then
             While B_ButtonState = 0 : Wend
@@ -767,30 +748,32 @@ Proc P_MenuSelect(B_Count As Byte), Byte
             Result = B_Index + 1
             GoTo Exit_P_MenuSelect
         EndIf
+        DelayMS 125
     Wend
     Exit_P_MenuSelect:
+    Cls
 EndProc
 '--------------------------------------------
-' Procedure: ShowMenu
-' Presents the configuration menu and returns the
-' selected entry number
-Proc ShowMenu(), Byte
-    Result = P_MenuSelect(Menu_Table, 10)
-EndProc
-'--------------------------------------------
-
 MenuTable:
+    'Group 1
     Dim S_String1 As Flash8 = "High Pressure", 0
     Dim S_String2 As Flash8 = "High Pressure BP", 0
-    Dim S_String3 As Flash8 = "Low Pressure BP", 0
+    Dim S_String3 As Flash8 = "Low Pressure", 0
     Dim S_String4 As Flash8 = "Primary LP BP ", 0
     Dim S_String5 As Flash8 = "Secondary LP BP", 0
     Dim S_String6 As Flash8 = "Use Clock?", 0
-    Dim S_String7 As Flash8 = "Use DDV?", 0        
-    Dim S_String8 As Flash8 = "Use Flow Switch?", 0
-    Dim S_String9 As Flash8 = "Use Flow Rate?", 0
-    Dim S_String10 As Flash8 = "Use Flow Volume?", 0    
-    
+    Dim S_String7 As Flash8 = "Use Flow Switch?", 0
+    Dim S_String8 As Flash8 = "Use Flow Rate?", 0
+    Dim S_String9 As Flash8 = "Use Flow Volume?", 0    
+    'Group 2
+    Dim S_String10 As Flash8 = "Main Menu", 0
+    Dim S_String11 As Flash8 = "Utility Menu", 0        
+    Dim S_String12 As Flash8 = "Setup Menu", 0
+    'Group 3
+    Dim S_String13 As Flash8 = "PSI", 0
+    Dim S_String14 As Flash8 = "kPa", 0
 
-
+    'Group 4
+    Dim S_String15 As Flash8 = "Yes", 0
+    Dim S_String16 As Flash8 = "No", 0               
 
