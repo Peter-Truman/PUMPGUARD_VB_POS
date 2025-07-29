@@ -117,6 +117,8 @@ Dim B_Month As Byte
 Dim B_Year As Byte
 Dim B_BeepLen As Byte
 Dim b_Isolate As Bit
+Dim B_RE_Count As Byte
+Dim B_Selected As Byte
 
 Clear                                   'Start clear
 
@@ -158,67 +160,67 @@ ISR_Handler:
         ' reload timer for 1ms
         TMR0L = 256-125
         INTCONbits_T0IF = 0
-
-        ' debounce rotary encoder and button inputs
-        Dim B_NewA  As Byte
-        Dim B_NewB  As Byte
-        Dim B_NewBtn As Byte
-
-        B_NewA  = PORTB.1
-        B_NewB  = PORTB.2
-        B_NewBtn = PORTB.6
-
-        If B_NewA <> B_AState Then
-            Inc B_DebA
-            If B_DebA >= 75 Then
-                B_AState = B_NewA
+        Inc B_RE_Count                                              'check the RE every 10 ms
+        If B_RE_Count>5 Then 
+            ' debounce rotary encoder and button inputs
+            Dim B_NewA  As Byte
+            Dim B_NewB  As Byte
+            Dim B_NewBtn As Byte
+    
+            B_NewA  = PORTB.1
+            B_NewB  = PORTB.2
+            B_NewBtn = PORTB.6
+    
+            If B_NewA <> B_AState Then
+                Inc B_DebA
+                If B_DebA >= 6 Then
+                    B_AState = B_NewA
+                    B_DebA = 0
+                EndIf
+            Else
                 B_DebA = 0
             EndIf
-        Else
-            B_DebA = 0
-        EndIf
-
-        If B_NewB <> B_BState Then
-            Inc B_DebB
-            If B_DebB >= 75 Then
-                B_BState = B_NewB
+    
+            If B_NewB <> B_BState Then
+                Inc B_DebB
+                If B_DebB >= 6 Then
+                    B_BState = B_NewB
+                    B_DebB = 0
+                EndIf
+            Else
                 B_DebB = 0
             EndIf
-        Else
-            B_DebB = 0
-        EndIf
-
-        If B_NewBtn <> B_ButtonState Then
-            Inc B_DebBtn
-            If B_DebBtn >= 75 Then
-                B_ButtonState = B_NewBtn
+    
+            If B_NewBtn <> B_ButtonState Then
+                Inc B_DebBtn
+                If B_DebBtn >= 6 Then
+                    B_ButtonState = B_NewBtn
+                    B_DebBtn = 0
+                EndIf
+            Else
                 B_DebBtn = 0
             EndIf
-        Else
-            B_DebBtn = 0
+    
+            Dim B_Curr As Byte
+            B_Curr = (B_AState * 2) + B_BState
+    
+            ' detect edges: Gray code sequence 00->01->11->10->00
+            Dim B_Combined As Byte
+            B_Combined = (B_LastState * 4) + B_Curr
+    
+    
+            'Isolate changes here (to avoid changes while pressing the knob)
+            If b_Isolate=0 Then 
+                Select B_Combined
+                    Case 0b0001, 0b0111, 0b1110, 0b1000
+                        Dec W_EncoderPos
+                    Case 0b0010, 0b1011, 0b1101, 0b0100
+                        Inc W_EncoderPos
+                EndSelect
+            EndIf
+            B_LastState = B_Curr
+            Clear B_RE_Count                                                    'start the count again
         EndIf
-
-        Dim B_Curr As Byte
-        B_Curr = (B_AState * 2) + B_BState
-
-        ' detect edges: Gray code sequence 00->01->11->10->00
-        Dim B_Combined As Byte
-        B_Combined = (B_LastState * 4) + B_Curr
-
-
-        'Isolate changes here (to avoid changes while pressing the knob)
-        If b_Isolate=0 Then 
-            Select B_Combined
-                Case 0b0001, 0b0111, 0b1110, 0b1000
-                    Dec W_EncoderPos
-                Case 0b0010, 0b1011, 0b1101, 0b0100
-                    Inc W_EncoderPos
-            EndSelect
-        EndIf
-
-
-
-        B_LastState = B_Curr
     EndIf
 
 
@@ -275,7 +277,8 @@ While 1 = 1
     P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
     P_LCD(2,1,"000psi     No Flow")
     P_LCD(4,1,"READY") 
-    If B_ButtonState =0 Then P_MainMen()
+    B_Selected = P_MenuSelect(MenuTable, 10)
+    'If B_ButtonState =0 Then P_screen1()
     DelayMS 100
 Wend
 End
@@ -334,10 +337,6 @@ Proc P_SetDateTime()
         DelayMS 250
         GoTo Retry
     EndIf
-
-       
-    
-
     'ok - unless timed our or early exit, write the time
     P_WriteTime()
     Cls
@@ -552,27 +551,7 @@ Proc P_Retry()
   Next
 EndProc
 '--------------------------------------------
-' Procedure: P_PrintWord
-' Prints one of the custom menu words on the LCD
-'  Index: 1=OK, 2=Retry, 3=[OK], 4=[Retry]
-Proc P_PrintWord(B_Index As Byte, B_Row As Byte, B_Col As Byte)
-    Dim W_Addr As Word
-    Select B_Index
-        Case 1
-            W_Addr = Word_OK
-        Case 2
-            W_Addr = Word_Retry
-        Case 3
-            W_Addr = Word_OK_Box
-        Case 4
-            W_Addr = Word_Retry_Box
-        Else
-            Exit
-    EndSelect
-    Print At B_Row, B_Col, CStr W_Addr
-EndProc
-'-----------------------------------------------
-Proc P_MainMen(),Byte                                                  'this will be the main menu screen - 3 options
+Proc P_Screen1(),Byte                                                  'this will be the main menu screen - 3 options
     Cls
     P_Beep(3)                                                       'Beep In
     P_Debounce()
@@ -656,3 +635,106 @@ Proc P_MainMen(),Byte                                                  'this wil
     Result = B_Option
     Cls
 EndProc
+'------------------------------------------------------------------
+' Procedure: P_MenuSelect
+' Shows a list of items on a 4-line LCD window and returns the
+' selected item number (1..B_Count). Items are stored as a Flash16
+' table holding addresses of null terminated strings.
+Proc P_MenuSelect(W_Table As Word, B_Count As Byte), Byte
+    Dim B_Index   As Byte
+    Dim B_First   As Byte
+    Dim B_I       As Byte
+    Dim W_Addr    As Word
+    Dim W_LastPos As Word
+
+    B_Index = 0
+    B_First = 0
+    W_LastPos = W_EncoderPos
+    Cls
+
+    While 1=1
+        ' display current window
+        For B_I = 0 To 3
+            If (B_First + B_I) < B_Count Then
+                W_Addr = CRead16 W_Table[B_First + B_I]
+                If (B_First + B_I) = B_Index Then
+                    Print At B_I, 0, ">"
+                Else
+                    Print At B_I, 0, " "
+                EndIf
+                Print At B_I, 1, CStr W_Addr
+            Else
+                Print At B_I, 0, "                "
+            EndIf
+        Next
+
+        ' handle rotary movement
+        If W_EncoderPos > W_LastPos Then
+            Inc B_Index
+            If B_Index >= B_Count Then B_Index = 0
+            W_LastPos = W_EncoderPos
+        EndIf
+
+        If W_EncoderPos < W_LastPos Then
+            If B_Index = 0 Then
+                B_Index = B_Count - 1
+            Else
+                Dec B_Index
+            EndIf
+            W_LastPos = W_EncoderPos
+        EndIf
+
+        ' shift window if needed
+        If B_Index >= (B_First + 4) Then
+            B_First = B_Index - 3
+        EndIf
+
+        If B_Index < B_First Then
+            B_First = B_Index
+        EndIf
+
+        ' button confirms selection
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0 : Wend
+            DelayMS 20
+            Result = B_Index + 1
+            GoTo Exit_P_MenuSelect
+        EndIf
+    Wend
+    Exit_P_MenuSelect:
+EndProc
+'--------------------------------------------
+' Procedure: P_PrintWord
+' Prints one of the custom menu words on the LCD
+'  Index: 1=OK, 2=Retry, 3=[OK], 4=[Retry]
+Proc P_PrintWord(B_Index As Byte, B_Row As Byte, B_Col As Byte)
+    Dim W_Addr As Word
+    Select B_Index
+        Case 1
+            W_Addr = High_Pressure
+        Case 2
+            W_Addr = HP_Bypass
+        Case 3
+            W_Addr = Low_Preassure
+        Case 4
+            W_Addr = Prim_LP_Bypass
+        Case 5
+            W_Addr = Sec_LP_Bypass
+        Case 6
+            W_Addr = Use_Clock? 
+        Case 7
+            W_Addr = Use_DDV?                 
+        Case 8
+            W_Addr = Use_Flow_Sw?          
+        Case 9
+            W_Addr = Use_Flow_Rate?       
+        Case 10
+            W_Addr = Use_Flow_Volume? 
+        Else
+            Exit
+    EndSelect
+    Print At B_Row, B_Col, CStr W_Addr
+EndProc
+
+
+
