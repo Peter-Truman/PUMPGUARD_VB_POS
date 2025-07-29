@@ -162,7 +162,7 @@ ISR_Handler:
         TMR0L = 256-125
         INTCONbits_T0IF = 0
         Inc B_RE_Count                                              'check the RE every 10 ms
-        If B_RE_Count>8 Then 
+        If B_RE_Count>9 Then 
             ' debounce rotary encoder and button inputs
             Dim B_NewA  As Byte
             Dim B_NewB  As Byte
@@ -174,7 +174,7 @@ ISR_Handler:
     
             If B_NewA <> B_AState Then
                 Inc B_DebA
-                If B_DebA >= 6 Then
+                If B_DebA >= 2 Then
                     B_AState = B_NewA
                     B_DebA = 0
                 EndIf
@@ -184,7 +184,7 @@ ISR_Handler:
     
             If B_NewB <> B_BState Then
                 Inc B_DebB
-                If B_DebB >= 6 Then
+                If B_DebB >= 2 Then
                     B_BState = B_NewB
                     B_DebB = 0
                 EndIf
@@ -194,7 +194,7 @@ ISR_Handler:
     
             If B_NewBtn <> B_ButtonState Then
                 Inc B_DebBtn
-                If B_DebBtn >= 6 Then
+                If B_DebBtn >= 2 Then
                     B_ButtonState = B_NewBtn
                     B_DebBtn = 0
                 EndIf
@@ -283,7 +283,7 @@ While 1 = 1
     P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
     P_LCD(2,1,"000psi     No Flow")
     P_LCD(4,1,"READY") 
-    If B_ButtonState =0 Then P_MenuSelect(10,12,3)  'call the menu - index 10-12, items to display
+    If B_ButtonState =0 Then P_MenuSelect(2,9)  'call the menu - which group, how many items
     DelayMS 100
 Wend
 End
@@ -680,7 +680,7 @@ EndProc
 'Shows a list of items on a 4-line LCD window and returns the
 'Choose items in this group
 'selected item number (1..B_Count). Titles are read using P_Title.
-Proc P_MenuSelect(B_Group As Byte B_Count As Byte), Byte
+Proc P_MenuSelect(B_Group As Byte, B_Count As Byte), Byte
     Cls
     P_Beep(3)                                                       'Beep In
     P_Debounce()
@@ -727,13 +727,14 @@ Proc P_MenuSelect(B_Group As Byte B_Count As Byte), Byte
         If W_EncoderPos > W_LastPos Then
             P_Beep(1)
             Inc B_Index
-            If B_Index >= B_Count Then B_Index = 0
+            If B_Index >= B_Count Then P_Beep(2)'B_Index = 0
             W_LastPos = W_EncoderPos
         EndIf
 
         If W_EncoderPos < W_LastPos Then
             P_Beep(1)
             If B_Index = 0 Then
+                P_Beep(2)
                 B_Index = B_Count - 1
             Else
                 Dec B_Index
@@ -759,7 +760,7 @@ MenuTable:
     Dim S_String1 As Flash8 = "High Pressure", 0
     Dim S_String2 As Flash8 = "High Pressure BP", 0
     Dim S_String3 As Flash8 = "Low Pressure", 0
-    Dim S_String4 As Flash8 = "Primary LP BP ", 0
+    Dim S_String4 As Flash8 = "Primary LP BP", 0
     Dim S_String5 As Flash8 = "Secondary LP BP", 0
     Dim S_String6 As Flash8 = "Use Clock?", 0
     Dim S_String7 As Flash8 = "Use Flow Switch?", 0
