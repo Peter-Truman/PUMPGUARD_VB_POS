@@ -122,6 +122,37 @@ Dim B_Selected As Byte
 
 Clear                                   'Start clear
 
+'' Menu item strings stored in flash
+'Menu_High_Pressure:      Cdata "High Pressure", 0
+'Menu_High_Pressure_BP:   Cdata "High Pressure BP", 0
+'Menu_Low_Pressure:       Cdata "Low Pressure", 0
+'Menu_Primary_LP_BP:      Cdata "Primary LP BP", 0
+'Menu_Secondary_LP_BP:    Cdata "Secondary LP BP", 0
+'Menu_Use_Clock:          Cdata "Use Clock?", 0
+'Menu_Use_DDV:            Cdata "Use DDV?", 0
+'Menu_Use_Flow_Switch:    Cdata "Use Flow Switch?", 0
+'Menu_Use_Flow_Rate:      Cdata "Use Flow Rate?", 0
+'Menu_Use_Flow_Volume:    Cdata "Use Flow Volume?", 0
+
+'' Table of menu item addresses
+'Menu_Table:
+'Cdata Word Menu_High_Pressure, Menu_High_Pressure_BP, Menu_Low_Pressure,
+'                Menu_Primary_LP_BP, Menu_Secondary_LP_BP, Menu_Use_Clock,
+'                Menu_Use_DDV, Menu_Use_Flow_Switch, Menu_Use_Flow_Rate,
+'                Menu_Use_Flow_Volume
+
+
+
+
+
+
+
+
+
+
+
+
+
 ' Constants
 
 Symbol LONG_PRESS = 2000  ' 2 seconds for long press (in ms)
@@ -267,6 +298,11 @@ Cls
 'P_WriteTime()
 Idle_Screen:          'Main display
 
+'for b_general = 0 to 10
+'    hrsout p_title(b_general),13
+'next b_general
+
+
 P_ReadTime()            'get the time (should be in global vars)
 'hrsout "Current time ="
 
@@ -277,8 +313,7 @@ While 1 = 1
     P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
     P_LCD(2,1,"000psi     No Flow")
     P_LCD(4,1,"READY") 
-    B_Selected = P_MenuSelect(MenuTable, 10)
-    'If B_ButtonState =0 Then P_screen1()
+    If B_ButtonState =0 Then P_MenuSelect(10)
     DelayMS 100
 Wend
 End
@@ -635,18 +670,47 @@ Proc P_Screen1(),Byte                                                  'this wil
     Result = B_Option
     Cls
 EndProc
-'------------------------------------------------------------------
+'--------------------------------------------
+Proc P_Title(B_Index As Byte),String * 18
+    'looks up the index of titles and returns the title string
+    Select B_Index
+    Case 1
+        Result = S_String1
+    Case 2
+        Result = S_String2
+    Case 3
+        Result = S_String3 
+    Case 4
+        Result = S_String4
+    Case 5
+        Result = S_String5
+    Case 6
+        Result = S_String6
+    Case 7
+        Result = S_String7
+    Case 8   
+        Result = S_String8
+    Case 9   
+        Result = S_String9
+    Case 10
+        Result = S_String10
+    EndSelect
+EndProc
+'--------------------------------------------
 ' Procedure: P_MenuSelect
 ' Shows a list of items on a 4-line LCD window and returns the
 ' selected item number (1..B_Count). Items are stored as a Flash16
 ' table holding addresses of null terminated strings.
-Proc P_MenuSelect(W_Table As Word, B_Count As Byte), Byte
+Proc P_MenuSelect(B_Count As Byte), Byte
+    Cls
+    P_Beep(3)
+    P_Debounce()
     Dim B_Index   As Byte
     Dim B_First   As Byte
     Dim B_I       As Byte
     Dim W_Addr    As Word
     Dim W_LastPos As Word
-
+    Dim S_Title As String * 18
     B_Index = 0
     B_First = 0
     W_LastPos = W_EncoderPos
@@ -655,27 +719,30 @@ Proc P_MenuSelect(W_Table As Word, B_Count As Byte), Byte
     While 1=1
         ' display current window
         For B_I = 0 To 3
+            S_Title=P_Title(B_Count)                                'which item to display            
             If (B_First + B_I) < B_Count Then
-                W_Addr = CRead16 W_Table[B_First + B_I]
+                'W_Addr = Cread16 W_Table[B_First + B_I]
                 If (B_First + B_I) = B_Index Then
-                    Print At B_I, 0, ">"
+                    Print At B_I+1, 0, ">"
                 Else
-                    Print At B_I, 0, " "
+                    Print At B_I+1, 0, " "
                 EndIf
-                Print At B_I, 1, CStr W_Addr
+                Print At B_I+1,1,P_Title(B_Index)
             Else
-                Print At B_I, 0, "                "
+                Print At B_I+1,1,P_Title(B_Index)
             EndIf
         Next
 
         ' handle rotary movement
         If W_EncoderPos > W_LastPos Then
+            P_Beep(1)
             Inc B_Index
             If B_Index >= B_Count Then B_Index = 0
             W_LastPos = W_EncoderPos
         EndIf
 
         If W_EncoderPos < W_LastPos Then
+            P_Beep(1)
             If B_Index = 0 Then
                 B_Index = B_Count - 1
             Else
@@ -704,37 +771,26 @@ Proc P_MenuSelect(W_Table As Word, B_Count As Byte), Byte
     Exit_P_MenuSelect:
 EndProc
 '--------------------------------------------
-' Procedure: P_PrintWord
-' Prints one of the custom menu words on the LCD
-'  Index: 1=OK, 2=Retry, 3=[OK], 4=[Retry]
-Proc P_PrintWord(B_Index As Byte, B_Row As Byte, B_Col As Byte)
-    Dim W_Addr As Word
-    Select B_Index
-        Case 1
-            W_Addr = High_Pressure
-        Case 2
-            W_Addr = HP_Bypass
-        Case 3
-            W_Addr = Low_Preassure
-        Case 4
-            W_Addr = Prim_LP_Bypass
-        Case 5
-            W_Addr = Sec_LP_Bypass
-        Case 6
-            W_Addr = Use_Clock? 
-        Case 7
-            W_Addr = Use_DDV?                 
-        Case 8
-            W_Addr = Use_Flow_Sw?          
-        Case 9
-            W_Addr = Use_Flow_Rate?       
-        Case 10
-            W_Addr = Use_Flow_Volume? 
-        Else
-            Exit
-    EndSelect
-    Print At B_Row, B_Col, CStr W_Addr
+' Procedure: ShowMenu
+' Presents the configuration menu and returns the
+' selected entry number
+Proc ShowMenu(), Byte
+    Result = P_MenuSelect(Menu_Table, 10)
 EndProc
+'--------------------------------------------
+
+MenuTable:
+    Dim S_String1 As Flash8 = "High Pressure", 0
+    Dim S_String2 As Flash8 = "High Pressure BP", 0
+    Dim S_String3 As Flash8 = "Low Pressure BP", 0
+    Dim S_String4 As Flash8 = "Primary LP BP ", 0
+    Dim S_String5 As Flash8 = "Secondary LP BP", 0
+    Dim S_String6 As Flash8 = "Use Clock?", 0
+    Dim S_String7 As Flash8 = "Use DDV?", 0        
+    Dim S_String8 As Flash8 = "Use Flow Switch?", 0
+    Dim S_String9 As Flash8 = "Use Flow Rate?", 0
+    Dim S_String10 As Flash8 = "Use Flow Volume?", 0    
+    
 
 
 
