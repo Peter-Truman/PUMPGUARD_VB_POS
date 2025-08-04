@@ -756,55 +756,42 @@ Proc P_MenuSelect(B_Group As Byte, B_Count As Byte), Byte
 EndProc
 '--------------------------------------------
 MenuTable:
-
     'Group 1 Options 
     Dim S_String1 As Flash8 = "Options", 0
     Dim S_String2 As Flash8 = "Main Menu", 0     
     Dim S_String3 As Flash8 = "Utility Menu", 0
     Dim S_String4 As Flash8 = "Setup Menu", 0  
+    
+    
+    
+    
+'    select B_In_1_Type                                       'This will be aliesed to bit 0.1 of the config 
+'        case 0
+'            Dim S_String7 As Flash8 = "Pressure", 0
+'        case 1
+'            Dim S_String8 As Flash8 = "Temperature", 0
+'        case 2
+'            Dim S_String9 As Flash8 = "Flow", 0
+'    endselect
 
-    
-    'Group 2 Main Menu
-    
-    Dim S_String5 As Flash8 = "Main Menu", 0    
-    Dim S_String6 As Flash8 = "Time", 0
-    Dim S_String7 As Flash8 = "Protection 1", 0
-    Dim S_String8 As Flash8 = "Protection 2", 0         
-    Dim S_String9 As Flash8 = "Protection 3", 0
+
+'    Dim S_String7 As Flash8 = "Protection 1", 0
+'    Dim S_String8 As Flash8 = "Protection 2", 0         
+'    Dim S_String9 As Flash8 = "Protection 3", 0
    
-   'Group 3 Time
-    Dim S_String10 As Flash8 = "Time", 0
-    Dim S_String11 As Flash8 = "Set Time", 0
-    
-    'Group 4 
-    Dim S_String12 As Flash8 =     
-                    
+'   'Group 3 Time
+'    Dim S_String10 As Flash8 = "Time", 0
+'    Dim S_String11 As Flash8 = "Set Run Time", 0
 
-    'Group 1
-    'Dim S_String1 As Flash8 = "High Pressure", 0
-    'Dim S_String2 As Flash8 = "High Pressure BP", 0
-    'Dim S_String3 As Flash8 = "Low Pressure", 0
-    'Dim S_String4 As Flash8 = "Primary LP BP", 0
-    'Dim S_String5 As Flash8 = "Secondary LP BP", 0
-    'Dim S_String6 As Flash8 = "Use Clock?", 0
-    'Dim S_String7 As Flash8 = "Use Flow Switch?", 0
-    'Dim S_String8 As Flash8 = "Use Flow Rate?", 0
-    'Dim S_String9 As Flash8 = "Use Flow Volume?", 0    
-    'Group 2
-    Dim S_String10 As Flash8 = "Main Menu", 0
-    Dim S_String11 As Flash8 = "Utility Menu", 0        
-    Dim S_String12 As Flash8 = "Setup Menu", 0
-    'Group 3
-    Dim S_String13 As Flash8 = "PSI", 0
-    Dim S_String14 As Flash8 = "kPa", 0
-
-    'Group 4
-    Dim S_String15 As Flash8 = "Yes", 0
-    Dim S_String16 As Flash8 = "No", 0
-    
-    'Group 5 (Setup Menu)
-    Dim S_String17 As Flash8 = "Setup Menu", 0
-    Dim S_String18 As Flash8 = "Input 1", 0
-    Dim S_String19 As Flash8 = "Input 2", 0
-    Dim S_String20 As Flash8 = "Input 3", 0                   
+'    'Group 5 Setup Menu
+'    Dim S_Stringx As Flash8 = "Setup Menu", 0
+'    Dim S_Stringx As Flash8 = "Input 1", 0
+'    Dim S_Stringx As Flash8 = "Input 2", 0
+'    Dim S_Stringx As Flash8 = "Input 3", 0
+        
+'    'Group 6 Input 1
+'    Dim S_Stringx As Flash8 = "Input 1", 0
+'    Dim S_Stringx As Flash8 = "Pressure", 0
+'    Dim S_Stringx As Flash8 = "Temperature", 0
+'    Dim S_Stringx As Flash8 = "Flow", 0
 
