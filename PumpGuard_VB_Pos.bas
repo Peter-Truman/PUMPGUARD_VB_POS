@@ -165,8 +165,8 @@ Dim L_Last_Run As Long
 Dim SB_Current_temp As Byte
 Dim b_MTimeout As Bit
 
-
-
+Dim W_TimeoutMS As Word
+Dim L_TimeoutRemain As Long
 
 Clear                                   'Start clear
 
@@ -235,14 +235,14 @@ Symbol EE_NextFree         = 0x4E
 ' Schema version  
 Symbol CURRENT_VERSION     = 1  
 
-' Timer0 configuration: prescaler 1:64 for 1ms tick @ 8MHz
-T0CONbits_T0PS2 = 1        ' \ prescaler 1:64
-T0CONbits_T0PS1 = 0        '  |
-T0CONbits_T0PS0 = 0        ' /
-T0CONbits_PSA  = 0         ' assign prescaler
-T0CONbits_T0CS  = 0        ' internal clock
-T0CONbits_T08BIT = 1       ' 8-bit mode
-TMR0L = 256-31             ' preload for 1ms (31 counts)
+' Timer0 init for 1 ms tick @ 32 MHz (Fosc), 1:32 prescaler
+T0CONbits_T0PS2 = 1       ' 1
+T0CONbits_T0PS1 = 0       ' 0  -> 1:32
+T0CONbits_T0PS0 = 0       ' 0
+T0CONbits_PSA   = 0       ' prescaler assigned
+T0CONbits_T0CS  = 0       ' internal clock
+T0CONbits_T08BIT= 1       ' 8-bit mode
+TMR0L = 6                 ' preload for 1 ms
 
 '--------------------------------------------
 ' Interrupt setup
@@ -260,23 +260,24 @@ T0CONbits_TMR0ON = 1       ' start timer
 GoTo over_Interrupt
 ISR_Handler:
     Context Save
-    Clrwdt                  ' in case watchdog enabled
+    Clrwdt                                                              ' watchdog tick (safe)
 
     If INTCONbits_T0IF = 1 Then
-        ' reload timer for 1ms
-        TMR0L = 256-125
-        INTCONbits_T0IF = 0
-        Inc B_RE_Count                                              'check the RE every 10 ms
-        If B_RE_Count>9 Then 
-            ' debounce rotary encoder and button inputs
+        TMR0L = 6                                                       ' 1 ms @ 32MHz, prescaler 1:32
+        INTCONbits_T0IF = 0                                             ' clear TMR0 interrupt flag
+
+        Inc B_RE_Count                                                  ' service RE every ~10 ms
+        If B_RE_Count > 9 Then                                          ' 10 × 1 ms = ~10 ms
+            '--- Debounce samples ------------------------------------------------
             Dim B_NewA  As Byte
             Dim B_NewB  As Byte
             Dim B_NewBtn As Byte
-    
-            B_NewA  = PORTB.1
-            B_NewB  = PORTB.2
-            B_NewBtn = PORTB.6
-    
+
+            B_NewA   = PORTB.1                                          ' sample encoder A
+            B_NewB   = PORTB.2                                          ' sample encoder B
+            B_NewBtn = PORTB.6                                          ' sample button
+
+            ' A debounce (~20 ms)
             If B_NewA <> B_AState Then
                 Inc B_DebA
                 If B_DebA >= 2 Then
@@ -286,7 +287,8 @@ ISR_Handler:
             Else
                 B_DebA = 0
             EndIf
-    
+
+            ' B debounce (~20 ms)
             If B_NewB <> B_BState Then
                 Inc B_DebB
                 If B_DebB >= 2 Then
@@ -296,46 +298,61 @@ ISR_Handler:
             Else
                 B_DebB = 0
             EndIf
-    
+
+            ' Button debounce (~20 ms). On *accepted* edge: reload inactivity timer
             If B_NewBtn <> B_ButtonState Then
                 Inc B_DebBtn
                 If B_DebBtn >= 2 Then
-                    B_ButtonState = B_NewBtn
-                    B_DebBtn = 0
+                    B_ButtonState   = B_NewBtn
+                    L_TimeoutRemain = B_Menu_Timeout * 1000             ' reload inactivity (ms)
+                    b_MTimeout      = 0                                 ' clear timeout flag
+                    B_DebBtn        = 0
                 EndIf
             Else
                 B_DebBtn = 0
             EndIf
-    
+
+            '--- Encoder gray-code decode ----------------------------------------
             Dim B_Curr As Byte
-            B_Curr = (B_AState * 2) + B_BState
-    
-            ' detect edges: Gray code sequence 00->01->11->10->00
+            B_Curr = (B_AState * 2) + B_BState                          ' 00,01,11,10 sequence
+
             Dim B_Combined As Byte
-            B_Combined = (B_LastState * 4) + B_Curr
-    
-    
-            'Isolate changes here (to avoid changes while pressing the knob)
-            If b_Isolate=0 Then 
+            B_Combined = (B_LastState * 4) + B_Curr                     ' last<<2 | curr
+
+            If b_Isolate = 0 Then                                       ' ignore while knob pressed, etc.
                 Select B_Combined
-                    Case 0b0001, 0b0111, 0b1110, 0b1000
+                    Case 0b0001, 0b0111, 0b1110, 0b1000                 ' step LEFT
                         Dec W_EncoderPos
-                    Case 0b0010, 0b1011, 0b1101, 0b0100
+                        L_TimeoutRemain = B_Menu_Timeout * 1000
+                        b_MTimeout = 0
+                    Case 0b0010, 0b1011, 0b1101, 0b0100                 ' step RIGHT
                         Inc W_EncoderPos
+                        L_TimeoutRemain = B_Menu_Timeout * 1000
+                        b_MTimeout = 0
                 EndSelect
             EndIf
             B_LastState = B_Curr
-            Clear B_RE_Count                                                    'start the count again
+
+            Clear B_RE_Count                                            ' next 10 ms window
         EndIf
     EndIf
 
-
-    If B_BeepLen > 0 Then                               'count down in ms
-        High _BUZZER
-        Dec B_BeepLen    
+    '--- Buzzer one-shot length in ms --------------------------------------------
+    If B_BeepLen > 0 Then
+        High _BUZZER                                                    ' drive buzzer while >0
+        Dec B_BeepLen
     Else
-        Low _BUZZER                                     'buzzer off    
+        Low _BUZZER
     EndIf
+
+    '--- Menu inactivity countdown in ms -----------------------------------------
+    If L_TimeoutRemain > 0 Then
+        Dec L_TimeoutRemain                                             ' 1 ms per ISR tick
+        If L_TimeoutRemain = 0 Then
+            Set b_MTimeout                                              ' set once when it reaches zero
+        EndIf
+    EndIf
+
     Context Restore
 
 over_Interrupt:
@@ -434,9 +451,8 @@ Cls                   ' Clear the LCD using the cls command
 DelayMS 10
 '––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 P_InitEEPROM()                                              'check the eeprom
+P_LoadFromEEPROM()
 P_LCD_SafeInit()                                            'initialize the LCD
-
-
 
 HRSOut "Startup",13
 P_LCD(1,6,"IRRISYS")
@@ -466,11 +482,13 @@ Dim L_Mask As Long
 
 
 DelayMS 100
-'HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year," ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Second, 13
+'This is going to form the basis for the main display
+MAIN_SCREEN:
 While 1 = 1
     P_ReadTime()
     P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
     P_LCD(2,1,"000psi     No Flow")
+    P_LCD(3,1,"Note - on this line")    
     P_LCD(4,1,"READY") 
 
     'experiment with the runtime
@@ -483,8 +501,15 @@ While 1 = 1
     'Button press for options
     'B_Option=P_Menu("OPTIONS",%11110000000000000000) 
     If B_ButtonState =0 Then 
-        L_Mask   = P_BuildMask10(1,2,3,20,0,0,0,0,0,0)           'This is the Options Menu (10 items max)
+        L_Mask   = P_BuildMask10(1,2,3,20,0,0,0,0,0,0)              'This is the Options Menu (10 items max)
         B_Option=P_Menu("OPTIONS",L_Mask)
+        HRSOut "B_Option = ",Dec3 B_Option,13                       'User wants to interract
+        If B_Option = 20 Then                                       'selected BACk - so CLS and start again - 20 is the code for 'BACK'
+            Cls
+            GoTo MAIN_SCREEN
+        EndIf
+        'otherwise run the menu routine
+        GoSub Menus                                                 'main menu routine
     EndIf
 Wend
 End
@@ -494,23 +519,67 @@ End
 '--------------------------------------------
 Menus:          'Main menu system
 
-
-'Options first
-'Title, start at, how many items
     P_Debounce()
     Select B_Option             'This is the options menu
         Case 1                  'Main Menu
             'Main Menu will include the following fields
-            'Title, Time, Pessure, Temperature, Flow (if enabled),back
-            B_Result=P_Menu("Main Menu",%1111100000000000000)
+            'Title, Time, Pressure, Temperature, Flow (if enabled),back
+            'B_Result=P_Menu("Main Menu",)
+
+
+
+
+
         Case 2                  'Utility Menu
 
         Case 3                  'Setup Menu
-            B_Option=P_Menu("Setup Menu",%1111111111111111111)
+            'setup menu includes Setup Input1..3, 
+            SetUp_Menu:                                                             'cycle back to here until timeout or BACK selected
+            L_Mask   = P_BuildMask10(4,7,8,9,10,11,12,13,14,20)
+            B_Option=P_Menu("Setup Menu",L_Mask)
+            If b_MTimeout = 1 Or B_Option = 20 Then GoTo EXIT_Menus                  'Menu Timeout/ Back selected             
+            'Now handle the other items selected
+            Select B_Option
+                Case 4                  'Date & Time 
+                    P_SetDateTime()                                                  'Set the date and time                    
+                    GoTo SetUp_Menu                                                  'Cycle back to contiue
+                Case 7                  'Menu Timeout
+                Case 8                  'Contrast
+                Case 9                  'Pwr Fail Dly
+                Case 10                 'Input 1
+                Case 11                 'Input 2
+                Case 12                 'Input 3
+                Case 13                 'End Runtime
+                Case 14                 'Pulse Duration
+            EndSelect
+
+
+        Case 5                  'View Log
+        Case 6                  'Clear Log
+
+
+        Case 15                 'Runtime
+        Case 16                 'Pressure
+        Case 17                 'Temperature
+        Case 18                 'Flow
+        Case 19                 'Vacuum
+        Case 20                 'BACK
+
+
     EndSelect 
 
     DelayMS 100
+    EXIT_Menus: 
 Return
+'--------------------------------------------
+
+
+
+
+
+
+
+
 '--------------------------------------------
 '        PROCEDURES HERE
 '––– 1. Load settings from EEPROM –––
@@ -519,19 +588,19 @@ Return
 
 
 
-Proc P_LoadSettingsFromEEPROM()
+Proc P_LoadFromEEPROM()
     Dim storedVer As Byte
-    storedVer = EEPROM_Read(EE_B_Version)
-    
+    storedVer = EEPROM_ReadByte(EE_B_Version)      ' <- was EEPROM_Read
+
     If storedVer = CURRENT_VERSION Then
         ' Byte fields
-        B_Log_Pos       = EEPROM_Read(EE_B_Log_Pos)
-        B_Menu_Timeout  = EEPROM_Read(EE_B_Menu_Timeout)
-        B_Contrast      = EEPROM_Read(EE_B_Contrast)
-        B_Relay_Pulse   = EEPROM_Read(EE_B_Relay_Pulse)
-        B_System_Flags  = EEPROM_Read(EE_B_System_Flags)
-        B_HT            = EEPROM_Read(EE_B_HT)
-        B_LFlo          = EEPROM_Read(EE_B_LFlo)
+        B_Log_Pos       = EEPROM_ReadByte(EE_B_Log_Pos)
+        B_Menu_Timeout  = EEPROM_ReadByte(EE_B_Menu_Timeout)
+        B_Contrast      = EEPROM_ReadByte(EE_B_Contrast)
+        B_Relay_Pulse   = EEPROM_ReadByte(EE_B_Relay_Pulse)
+        B_System_Flags  = EEPROM_ReadByte(EE_B_System_Flags)
+        B_HT            = EEPROM_ReadByte(EE_B_HT)
+        B_LFlo          = EEPROM_ReadByte(EE_B_LFlo)
 
         ' Word fields
         W_Con_2_Cnfg    = EEPROM_ReadWord(EE_W_Con_2_Cnfg)
@@ -553,15 +622,22 @@ Proc P_LoadSettingsFromEEPROM()
         W_HTBP          = EEPROM_ReadWord(EE_W_HTBP)
         W_LFloBP        = EEPROM_ReadWord(EE_W_LFloBP)
 
-        ' Long fields (6-byte values)
+        ' Long fields
         L_New_RunTime      = EEPROM_ReadLong(EE_L_New_RunTime)
         L_Current_RunTime  = EEPROM_ReadLong(EE_L_Current_RunTime)
         L_Last_Run         = EEPROM_ReadLong(EE_L_Last_Run)
+
+        ' sanity clamp for safety (avoid 0 meaning “instant timeout”)
+        If B_Menu_Timeout = 0 Then B_Menu_Timeout = 120
+
     Else
         ' first run or schema change: initialize defaults
         P_InitEEPROM()
+        ' then load them
+        B_Menu_Timeout = 120
     EndIf
 EndProc
+'--------------------------------------------
 
 
 '––– 2. Save settings to EEPROM –––
@@ -698,8 +774,11 @@ EndProc
 '   DD/MM/YY and HH:MM:SS on a DS3231M RTC
 '
 Proc P_SetDateTime()
-    Retry:
+    Cls
     P_Beep(3)                                                       'Beep In
+    P_Debounce()
+    Retry:
+
     P_Debounce()
     Dim W_LastPos As Word
     DelayMS 500
@@ -783,7 +862,7 @@ Proc P_SetField(B_Ln As Byte, B_col As Byte,B_Zero As Byte,B_Value As Byte, B_Mi
             While B_ButtonState = 0 :DelayMS 100: Wend: DelayMS 50
             GoTo Exit_P_SetField:
         EndIf
-        DelayMS 75
+        DelayMS 5
     Wend
     Exit_P_SetField:
     Result = B_Value                       'return a value
@@ -928,11 +1007,11 @@ Proc P_Beep(B_Len As Byte)
         Case 1
             B_BeepLen=1
         Case 2
-            B_BeepLen=50
+            B_BeepLen=75
         Case 3
             B_BeepLen=100
         Case 4
-            B_BeepLen=200
+            B_BeepLen=150
         Case 5
             B_BeepLen=255                
     EndSelect
@@ -952,7 +1031,7 @@ Proc P_Startup()
   Dim cycle As Byte
   For cycle = 1 To 5
     P_Beep(3)
-    DelayMS 100
+    DelayMS 200
   Next
 EndProc
 '--------------------------------------------
@@ -961,7 +1040,7 @@ Proc P_Retry()
   Dim B_Cycle As Byte
   For B_Cycle = 1 To 5
     P_Beep(3)
-    DelayMS 150
+    DelayMS 300
   Next
 EndProc
 '--------------------------------------------
@@ -970,7 +1049,7 @@ Proc P_P_Timeout()
     Dim B_Cycle As Byte
     For B_cycle = 1 To 5
         P_Beep(2)
-    DelayMS 100
+    DelayMS 400
   Next
 EndProc
 '--------------------------------------------
@@ -1034,170 +1113,307 @@ Proc P_BuildMask10(B1 As Byte, B2 As Byte, B3 As Byte, B4 As Byte, B5 As Byte, B
     GoTo Exit_P_BuildMask10
 Exit_P_BuildMask10:
 EndProc
-
-
+'--------------------------------------------
 
 '--------------------------------------------
 ' Lookup strings by index (1-based)
 '--------------------------------------------------------------------
 Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
-    ' ...
-    Dim B_IDs[24] As Byte
-    Dim L_bitmask As Long
-    Dim B_Count As Byte
-    Dim B_I As Byte
+    'P_TimeoutStart(B_Menu_Timeout)
+    Clear b_MTimeout
+HRSOut "B_Menu_Timeout =",Dec3 B_Menu_Timeout,13
 
-    B_Count   = 0
-    L_bitmask = 1
-    For B_I = 0 To 23                    ' IDs 1..24 (bit0->ID1)
-        If (L_Mask & L_bitmask) <> 0 Then
+
+
+    L_TimeoutRemain = B_Menu_Timeout*1000           'reload the menu timer  
+    P_Beep(3)
+    P_Debounce()
+
+    ' Build list of IDs from mask (1..24)
+    Dim B_IDs[24] As Byte
+    Dim B_Count  As Byte
+    Dim B_I      As Byte
+    Dim L_Tmp    As Long
+    
+    B_Count = 0
+    L_Tmp   = L_Mask
+    For B_I = 0 To 23               ' bits 0..23 ? IDs 1..24
+        If (L_Tmp & 1) <> 0 Then
             B_IDs[B_Count] = B_I + 1
             Inc B_Count
         EndIf
-        L_bitmask = L_bitmask * 2
+        L_Tmp = L_Tmp >> 1          ' shift right 1 bit
     Next
-    ' ... (rest of your existing code unchanged)
 
-    '–– display & timeout state ––
-    Dim B_Index      As Byte    ' current selection
-    Dim B_First      As Byte    ' first visible index in window
+    '–– display & input state ––
+    Dim B_Index      As Byte   ' current selection
+    Dim B_First      As Byte   ' first visible index
+    Dim B_PrevIndex  As Byte
+    Dim B_PrevFirst  As Byte
+    Dim B_Dirty      As Byte
     Dim W_LastPos    As Word
     Dim S_Line       As String * 18
     Dim B_Len        As Byte
-    Dim W_msCounter  As Word    ' ms accumulator
-    Dim B_secCounter As Byte    ' seconds elapsed
 
     Cls
-    Print At 1,1, S_Title         ' title fixed at top
-    B_Index      = 0
-    W_LastPos    = W_EncoderPos
-    W_msCounter  = 0
-    B_secCounter = 0
-    b_MTimeout   = 0
+    Print At 1,1, S_Title
+
+    B_Index     = 0
+    B_PrevIndex = 255     ' force first render
+    B_PrevFirst = 255
+    B_Dirty     = 1
+    W_LastPos   = W_EncoderPos
 
     While 1 = 1
-        '–– three-line sliding window ––
+        ' compute 3-line window around selection
         B_First = B_Index - 2
         If B_First < 0 Then B_First = 0
-        If B_First > (B_Count - 3) Then B_First = B_Count - 3
-        If B_First < 0 Then B_First = 0
+        If B_Count >= 3 Then
+            If B_First > (B_Count - 3) Then B_First = B_Count - 3
+        Else
+            B_First = 0
+        EndIf
 
-        '–– draw lines 2–4 ––
-        For B_I = 0 To 2
-            Print At B_I + 2,1,"                    "  ' clear 20 chars
-            If (B_First + B_I) < B_Count Then
-                S_Line = P_GetMenuString(B_IDs[B_First + B_I])
-                B_Len  = Len(S_Line)
-                If (B_First + B_I) = B_Index Then
-                    Print At B_I + 2,1,"["
-                    Print At B_I + 2,2,S_Line
-                    Print At B_I + 2,2 + B_Len,"]"
-                Else
-                    Print At B_I + 2,2,S_Line
+        ' mark dirty if window or selection changed
+        If B_First <> B_PrevFirst Then
+            B_Dirty = 1
+        ElseIf B_Index <> B_PrevIndex Then
+            B_Dirty = 1
+        EndIf
+
+
+        ' redraw only when dirty
+        If B_Dirty = 1 Then
+            For B_I = 0 To 2
+                Print At B_I + 2,1,"                    "
+                If (B_First + B_I) < B_Count Then
+                    S_Line = P_GetMenuString(B_IDs[B_First + B_I])
+                    B_Len  = Len(S_Line)
+                    If (B_First + B_I) = B_Index Then
+                        Print At B_I + 2,1,"["
+                        Print At B_I + 2,2,S_Line
+                        Print At B_I + 2,2 + B_Len,"]"
+                    Else
+                        Print At B_I + 2,2,S_Line
+                    EndIf
                 EndIf
-            EndIf
-        Next
+            Next
+            B_PrevFirst = B_First
+            B_PrevIndex = B_Index
+            B_Dirty     = 0
+        EndIf
 
-        '–– encoder movement (no wrap), beep on valid move & reset timeout ––
+        ' encoder movement (no wrap), beep only on valid move
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Index < B_Count - 1 Then
-                Inc B_Index: P_Beep(1)
+            If B_Index < (B_Count - 1) Then
+                Inc B_Index
+                P_Beep(1)
             EndIf
-            W_msCounter = 0: B_secCounter = 0
         ElseIf W_EncoderPos < W_LastPos Then
             W_LastPos = W_EncoderPos
             If B_Index > 0 Then
-                Dec B_Index: P_Beep(1)
+                Dec B_Index
+                P_Beep(1)
             EndIf
-            W_msCounter = 0: B_secCounter = 0
         EndIf
 
-        '–– button = select ––
+        ' button = select
         If B_ButtonState = 0 Then
-            P_Exit_OK(): P_Debounce()
+            P_Exit_OK()
+            P_Debounce()
             Result = B_IDs[B_Index]
             GoTo Exit_P_Menu
         EndIf
 
-'        '–– timeout tick ––
-'        DelayMS(125)
-'        W_msCounter = W_msCounter + 125
-'        If W_msCounter >= 1000 Then
-'            W_msCounter  = W_msCounter - 1000
-'            Inc B_secCounter
-'            If B_secCounter >= B_Menu_Timeout Then
-'                P_P_Timeout()   ' timeout beep pattern
-'                b_MTimeout = 1      'set flag to indicate timeout
-'                'Result = &HFF    ' timeout code
-'                GoTo Exit_P_Menu
-'            EndIf
-'        EndIf
+        If b_MTimeout = 1 Then
+            HRSOut "Menu Timeout",13
+            P_P_Timeout()
+            GoTo Exit_P_Menu
+        EndIf
+
+        DelayMS 50
     Wend
 
 Exit_P_Menu:
-    'If b_MTimeout = 0 Then P_Exit_OK()   ' normal exit beep
 EndProc
+'--------------------------------------------------------------------
+
+
+'''Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
+'''    ' ...
+'''Dim B_IDs[24] As Byte
+'''Dim B_Count  As Byte
+'''Dim B_I      As Byte
+'''Dim L_Tmp    As Long
+
+'''B_Count = 0
+'''L_Tmp   = L_Mask
+'''For B_I = 0 To 23                ' check bits 0..23 ? IDs 1..24
+'''    If (L_Tmp & 1) <> 0 Then
+'''        B_IDs[B_Count] = B_I + 1
+'''        Inc B_Count
+'''    EndIf
+'''    L_Tmp = L_Tmp / 2            ' arithmetic shift right by 1 bit
+'''Next
+'''' DEBUG: show mask and the IDs we found
+'''HRSOut "L_Mask=", Dec8 L_Mask, "  B_Count=", Dec3 B_Count, 13
+'''For B_I = 0 To B_Count - 1
+'''    HRSOut " ID[", Dec2 B_I, "]=", Dec2 B_IDs[B_I]
+'''Next
+'''HRSOut 13
+
+
+
+
+
+
+
+'''    ' ... (rest of your existing code unchanged)
+
+'''    '–– display & timeout state ––
+'''    Dim B_Index      As Byte    ' current selection
+'''    Dim B_First      As Byte    ' first visible index in window
+'''    Dim W_LastPos    As Word
+'''    Dim S_Line       As String * 18
+'''    Dim B_Len        As Byte
+'''    Dim W_msCounter  As Word    ' ms accumulator
+'''    Dim B_secCounter As Byte    ' seconds elapsed
+
+'''    Cls
+'''    Print At 1,1, S_Title         ' title fixed at top
+'''    B_Index      = 0
+'''    W_LastPos    = W_EncoderPos
+'''    W_msCounter  = 0
+'''    B_secCounter = 0
+'''    b_MTimeout   = 0
+
+'''    While 1 = 1
+'''        '–– three-line sliding window ––
+'''        B_First = B_Index - 2
+'''        If B_First < 0 Then B_First = 0
+'''        If B_First > (B_Count - 3) Then B_First = B_Count - 3
+'''        If B_First < 0 Then B_First = 0
+
+'''        '–– draw lines 2–4 ––
+'''        For B_I = 0 To 2
+'''            Print At B_I + 2,1,"                    "  ' clear 20 chars
+'''            If (B_First + B_I) < B_Count Then
+'''                S_Line = P_GetMenuString(B_IDs[B_First + B_I])
+'''                B_Len  = Len(S_Line)
+'''                If (B_First + B_I) = B_Index Then
+'''                    Print At B_I + 2,1,"["
+'''                    Print At B_I + 2,2,S_Line
+'''                    Print At B_I + 2,2 + B_Len,"]"
+'''                Else
+'''                    Print At B_I + 2,2,S_Line
+'''                EndIf
+'''            EndIf
+'''        Next
+
+'''        '–– encoder movement (no wrap), beep on valid move & reset timeout ––
+'''        If W_EncoderPos > W_LastPos Then
+'''            W_LastPos = W_EncoderPos
+'''            If B_Index < B_Count - 1 Then
+'''                Inc B_Index: P_Beep(1)
+'''            EndIf
+'''            W_msCounter = 0: B_secCounter = 0
+'''        ElseIf W_EncoderPos < W_LastPos Then
+'''            W_LastPos = W_EncoderPos
+'''            If B_Index > 0 Then
+'''                Dec B_Index: P_Beep(1)
+'''            EndIf
+'''            W_msCounter = 0: B_secCounter = 0
+'''        EndIf
+
+'''        '–– button = select ––
+'''        If B_ButtonState = 0 Then
+'''            P_Exit_OK(): P_Debounce()
+'''            Result = B_IDs[B_Index]
+'''            GoTo Exit_P_Menu
+'''        EndIf
+
+''''        '–– timeout tick ––
+''''        DelayMS(125)
+''''        W_msCounter = W_msCounter + 125
+''''        If W_msCounter >= 1000 Then
+''''            W_msCounter  = W_msCounter - 1000
+''''            Inc B_secCounter
+''''            If B_secCounter >= B_Menu_Timeout Then
+''''                P_P_Timeout()   ' timeout beep pattern
+''''                b_MTimeout = 1      'set flag to indicate timeout
+''''                'Result = &HFF    ' timeout code
+''''                GoTo Exit_P_Menu
+''''            EndIf
+''''        EndIf
+'''    Wend
+
+'''Exit_P_Menu:
+'''    'If b_MTimeout = 0 Then P_Exit_OK()   ' normal exit beep
+'''EndProc
 
 
 '--------------------------------------------------------------------
-MenuTable:
-    'Group 1 Options 
+'MenuTable:
+'    'Group 1 Options 
 
-    'Options    first screen title
-    Dim S_String1 As Flash8 = "Main Menu", 0        'option 1     
-    Dim S_String2 As Flash8 = "Utility Menu", 0     'option 2 
-    Dim S_String3 As Flash8 = "Setup Menu", 0       'option 3   
+'    'Options    first screen title
+'    Dim S_String1 As Flash8 = "Main Menu", 0        'option 1     
+'    Dim S_String2 As Flash8 = "Utility Menu", 0     'option 2 
+'    Dim S_String3 As Flash8 = "Setup Menu", 0       'option 3   
 
-    'Utility Menu   Utility menu title
-    Dim S_String4 As Flash8 = "Date and Time", 0    'option 1
-    Dim S_String5 As Flash8 = "View Log", 0         'option 2
-    Dim S_String6 As Flash8 = "Clear Log", 0        'option 3
-    Dim S_String7 As Flash8 = "Menu Timeout", 0     'option 4
-    Dim S_String8 As Flash8 = "Contrast", 0        'option 5
-    Dim S_String9 As Flash8 = "Pwr Fail Delay", 0  'option 6
+'    'Utility Menu   Utility menu title
+'    Dim S_String4 As Flash8 = "Date and Time", 0    'option 1
+'    Dim S_String5 As Flash8 = "View Log", 0         'option 2
+'    Dim S_String6 As Flash8 = "Clear Log", 0        'option 3
+'    Dim S_String7 As Flash8 = "Menu Timeout", 0     'option 4
+'    Dim S_String8 As Flash8 = "Contrast", 0        'option 5
+'    Dim S_String9 As Flash8 = "Pwr Fail Delay", 0  'option 6
 
-    'Setup Menu 'Setup menu title
-    Dim S_String10 As Flash8 = "Input 1", 0         'option 1
-    Dim S_String11 As Flash8 = "Input 2", 0         'option 2
-    Dim S_String12 As Flash8 = "Input 3", 0         'option 3
-    Dim S_String13 As Flash8 = "End Runtime", 0     'option 4
-    Dim S_String14 As Flash8 = "Pulse Duration", 0  'option 5
+'    'Setup Menu 'Setup menu title
+'    Dim S_String10 As Flash8 = "Input 1", 0         'option 1
+'    Dim S_String11 As Flash8 = "Input 2", 0         'option 2
+'    Dim S_String12 As Flash8 = "Input 3", 0         'option 3
+'    Dim S_String13 As Flash8 = "End Runtime", 0     'option 4
+'    Dim S_String14 As Flash8 = "Pulse Duration", 0  'option 5
     
                     
-    'Main Menu Options
-    Dim S_String15 As Flash8 = "RunTime", 0     'option 2
-    Dim S_String16 As Flash8 = "Pressure", 0            'option 3
-    Dim S_String17 As Flash8 = "Temperature", 0            'option 3 
-    Dim S_String18 As Flash8 = "Flow", 0            'option 3 
-    Dim S_String19 As Flash8 = "Vacuum", 0            'option 3 
-    Dim S_String20 As Flash8 = "BACK", 0
+'    'Main Menu Options
+'    Dim S_String15 As Flash8 = "RunTime", 0     'option 2
+'    Dim S_String16 As Flash8 = "Pressure", 0            'option 3
+'    Dim S_String17 As Flash8 = "Temperature", 0            'option 3 
+'    Dim S_String18 As Flash8 = "Flow", 0            'option 3 
+'    Dim S_String19 As Flash8 = "Vacuum", 0            'option 3 
+'    Dim S_String20 As Flash8 = "BACK", 0
 
     
-    'Alternate Names
-    Dim S_String22 As Flash8 = "Something Else", 0            'option 3     
+'    'Alternate Names
+'    Dim S_String22 As Flash8 = "Something Else", 0            'option 3     
 
 '––– RAM buffers for display –––
-Dim S_String1 As String * 18
-Dim S_String2 As String * 18
-Dim S_String3 As String * 18
-Dim S_String4 As String * 18
-Dim S_String5 As String * 18
-Dim S_String6 As String * 18
-Dim S_String7 As String * 18
-Dim S_String8 As String * 18
-Dim S_String9 As String * 18
-Dim S_String10 As String * 18
-Dim S_String11 As String * 18
-Dim S_String12 As String * 18
-Dim S_String13 As String * 18
-Dim S_String14 As String * 18
-Dim S_String15 As String * 18
-Dim S_String16 As String * 18
-Dim S_String17 As String * 18
-Dim S_String18 As String * 18
-Dim S_String19 As String * 18
-Dim S_String20 As String * 18
+'--- FLASH (program memory) strings ---
+MenuTable:
+Dim S_String1_F  As Flash8 = "Main Menu", 0
+Dim S_String2_F  As Flash8 = "Utility Menu", 0
+Dim S_String3_F  As Flash8 = "Setup Menu", 0
+Dim S_String4_F  As Flash8 = "Date and Time", 0
+Dim S_String5_F  As Flash8 = "View Log", 0
+Dim S_String6_F  As Flash8 = "Clear Log", 0
+Dim S_String7_F  As Flash8 = "Menu Timeout", 0
+Dim S_String8_F  As Flash8 = "Contrast", 0
+Dim S_String9_F  As Flash8 = "Pwr Fail Delay", 0
+Dim S_String10_F As Flash8 = "Input 1", 0
+Dim S_String11_F As Flash8 = "Input 2", 0
+Dim S_String12_F As Flash8 = "Input 3", 0
+Dim S_String13_F As Flash8 = "End Runtime", 0
+Dim S_String14_F As Flash8 = "Pulse Duration", 0
+Dim S_String15_F As Flash8 = "RunTime", 0
+Dim S_String16_F As Flash8 = "Pressure", 0
+Dim S_String17_F As Flash8 = "Temperature", 0
+Dim S_String18_F As Flash8 = "Flow", 0
+Dim S_String19_F As Flash8 = "Vacuum", 0
+Dim S_String20_F As Flash8 = "BACK", 0
+
 
 ' copy flash into RAM once at startup
 Proc InitMenuStrings()
@@ -1220,54 +1436,54 @@ Proc InitMenuStrings()
     S_String17 = S_String17_F
     S_String18 = S_String18_F
     S_String19 = S_String19_F
-    S_String19 = S_String20_F
+    S_String20 = S_String20_F
 EndProc
 '---------------------------------------------------------------
 '––– lookup routine –––
 Proc P_GetMenuString(B_ID As Byte), String * 18
     Select Case B_ID
-    Case 1
-        Result = S_String1
-    Case 2
-        Result = S_String2
-    Case 3
-        Result = S_String3
-    Case 4
-        Result = S_String4
-    Case 5
-        Result = S_String5
-    Case 6
-        Result = S_String6
-    Case 7
-        Result = S_String7
-    Case 8
-        Result = S_String8
-    Case 9
-        Result = S_String9
-    Case 10
-        Result = S_String10
-    Case 11
-        Result = S_String11
-    Case 12
-        Result = S_String12
-    Case 13
-        Result = S_String13
-    Case 14
-        Result = S_String14
-    Case 15
-        Result = S_String15
-    Case 16
-        Result = S_String16
-    Case 17
-        Result = S_String17
-    Case 18
-        Result = S_String18
-    Case 19
-        Result = S_String19
-    Case 20
-        Result = S_String20
-    Case Else
-        Result = " "    ' blank if unknown
+        Case 1
+            Result = S_String1_F
+        Case 2
+            Result = S_String2_F
+        Case 3
+            Result = S_String3_F
+        Case 4
+            Result = S_String4_F
+        Case 5
+            Result = S_String5_F
+        Case 6
+            Result = S_String6_F
+        Case 7
+            Result = S_String7_F
+        Case 8
+            Result = S_String8_F
+        Case 9
+            Result = S_String9_F
+        Case 10
+            Result = S_String10_F
+        Case 11
+            Result = S_String11_F
+        Case 12
+            Result = S_String12_F
+        Case 13
+            Result = S_String13_F
+        Case 14
+            Result = S_String14_F
+        Case 15
+            Result = S_String15_F
+        Case 16
+            Result = S_String16_F
+        Case 17
+            Result = S_String17_F
+        Case 18
+            Result = S_String18_F
+        Case 19
+            Result = S_String19_F
+        Case 20
+            Result = S_String20_F
+        Case Else
+            Result = " "
     End Select
 EndProc
 '---------------------------------------------------------------
