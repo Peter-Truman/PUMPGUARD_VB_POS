@@ -569,16 +569,35 @@ While 1 = 1
     P_LCD(4,1,"READY") 
 
     'User Interaction
-    If B_ButtonState =0 Then                                                    'Buttom is pressed 
-        L_Mask   = P_BuildMask10(1,2,3,20,0,0,0,0,0,0)                          'This is the Options Menu (10 items max)
-        B_Option=P_Menu("OPTIONS",L_Mask)
-        HRSOut "B_Option = ",Dec3 B_Option,13                                   'Which menu?
-        If B_Option = 20 Then                                                   'selected BACk - so CLS and start again - 20 is the code for 'BACK'
+    If B_ButtonState = 0 Then
+        DelayMS 30                               ' small debounce
+        While B_ButtonState = 0
+            If b_Long = 1 Then                   ' LONG on main screen
+                Clear b_Long
+                b_ReInitLCD = 1                  ' will be serviced in the loop
+                GoTo MAIN_SCREEN                 ' do not open menu
+            EndIf
+            DelayMS 10
+        Wend
+    
+        ' SHORT press: beep and open menu
+        P_Beep(2)
+        Clear b_MTimeout : Clear b_Long
+        L_Mask   = P_BuildMask10(1,2,3,20,0,0,0,0,0,0)
+        B_Option = P_Menu("OPTIONS", L_Mask)
+    
+        ' Back/timeout/long ? 0 (see section 2)
+        If B_Option = 0 Then
             Cls
-            GoTo MAIN_SCREEN                                                    'Main Screen
+            GoTo MAIN_SCREEN
         EndIf
-        'otherwise run the menu routine
-        GoSub Menus                                                 'main menu routine
+        
+        If B_Option = 20 Then
+            Cls
+            GoTo MAIN_SCREEN
+        EndIf
+    
+        GoSub Menus
     EndIf
 
 'RTC Test
@@ -603,25 +622,27 @@ Menus:          'Main menu system
 
 
         Case 2                  'Utility Menu
+            ' Utility menu
             Utility_Menu:
             L_Mask   = P_BuildMask10(4,5,6,20,0,0,0,0,0,0)
-            Clear b_MTimeout
-            Clear b_Long
-            B_Option=P_Menu("UTILITY MENU",L_Mask)            
-            P_Debounce()
-            If B_Option = 20 Or b_MTimeout =1 Or b_Long = 1 Then              'Back, Timeout or long press
-                P_Debounce()
-                GoTo EXIT_Menus               'Menu Timeout/ Back selected             
-                P_P_Timeout()                   'Menu exit beeps
+            B_Option = P_Menu("UTILITY MENU", L_Mask)
+            'If (B_Option = 0) Or (B_Option = 20) Then GoTo EXIT_Menus
+            ' Back / timeout / long? -> return to main
+            If B_Option = 0 Or B_Option = 20 Then
+                Cls
+                GoTo EXIT_Menus
             EndIf
-            'Now handle the other items selected
+
+            ' Otherwise handle the selection
+            GoSub Menus
+
+
+            
             Select B_Option
                 Case 4
-                    P_SetDateTime()                                                  'Set the date and time                    
-                    GoTo Utility_Menu                                                  'Cycle back to contiue
-               
+                    P_SetDateTime()
+                    GoTo Utility_Menu
                 Case 5
-                
                 Case 6
             EndSelect
 
@@ -1169,8 +1190,8 @@ EndProc
 ' Build a mask from up to TEN decimal IDs (1..24). Pass 0 to skip a slot.
 ' Returns the mask via Result (Long = 24-bit in Positron).
 Proc P_BuildMask10(B1 As Byte, B2 As Byte, B3 As Byte, B4 As Byte, B5 As Byte, B6 As Byte, B7 As Byte, B8 As Byte, B9 As Byte, B10 As Byte), Long
-    P_Beep(3)
-    P_Debounce()
+    'P_Beep(3)
+    'P_Debounce()
 
     Dim L_Mask As Long
     L_Mask = 0
@@ -1208,6 +1229,7 @@ EndProc
 Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
     Clear b_MTimeout
     Clear b_Long
+    Clear b_ReInitLCD                   ' <— important: avoid LCD reinit from menu long-press
     L_TimeoutRemain = B_Menu_Timeout*1000           'reload the menu timer  
     P_Debounce()
 
@@ -1248,12 +1270,10 @@ Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
 
     While 1 = 1
         ' compute 3-line window around selection
-        B_First = B_Index - 2
-        If B_First < 0 Then B_First = 0
-        If B_Count >= 3 Then
-            If B_First > (B_Count - 3) Then B_First = B_Count - 3
-        Else
+        If B_Index < 2 Then
             B_First = 0
+        Else
+            B_First = B_Index - 2
         EndIf
 
         ' mark dirty if window or selection changed
@@ -1299,26 +1319,29 @@ Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
             EndIf
         EndIf
 
-        ' button = select
-        If B_ButtonState=0 Then
-            P_Beep(2)
-            DelayMS 100
-            While B_ButtonState=0
-                If b_Long = 1 Then 
-                    'long press
-                    Result = 0
-                    GoTo Exit_P_Menu                        'no changes
+     ' --- button = select (fixed) ---
+        If B_ButtonState = 0 Then
+            ' Wait for release or detect LONG
+            While B_ButtonState = 0
+                If b_Long = 1 Then
+                    Clear b_Long
+                    Clear b_ReInitLCD
+                    If B_BeepLen = 0 Then P_Beep(5)   ' single long beep for menu-escape
+                    Result = 0                         ' "no change / escape"
+                    GoTo Exit_P_Menu
                 EndIf
-                GoTo Exit_P_Menu
+                DelayMS 10
             Wend
-            'shorpress
-            DelayMS 50
+            ' Short press: accept selection
+            P_Beep(2)
             Result = B_IDs[B_Index]
             GoTo Exit_P_Menu
         EndIf
+    ' --- timeout? exit with long beep, no change ---
         If b_MTimeout = 1 Then
-            HRSOut "Menu Timeout",13
-            P_P_Timeout()
+            Clear b_MTimeout
+            Clear b_ReInitLCD
+            If B_BeepLen = 0 Then P_Beep(5)
             Result = 0
             GoTo Exit_P_Menu
         EndIf
