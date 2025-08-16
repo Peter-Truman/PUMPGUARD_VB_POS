@@ -175,6 +175,7 @@ Dim W_BtnHoldMS As Word                 ' counts how long RB6 (button) is held, 
 Dim S_Qacc As SByte                     ' -4..+4 is plenty; tracks partial steps
 Dim b_ReInitLCD As Bit
 Dim b_ReadRTC As Bit
+Dim b_Escape As Bit
 
 Clear                                   'Start clear
 
@@ -634,17 +635,22 @@ Menus:          'Main menu system
             EndIf
 
             ' Otherwise handle the selection
-            GoSub Menus
+            'GoSub Menus
 
-
-            
+             
             Select B_Option
                 Case 4
-                    P_SetDateTime()
-                    GoTo Utility_Menu
-                Case 5
-                Case 6
-            EndSelect
+                P_SetDateTime()
+                If b_Escape = 1 Then
+                    Clear b_Escape
+                    Cls
+                    GoTo EXIT_Menus      ' unwind all the way to main
+                EndIf
+                GoTo Utility_Menu        ' only loop back if the edit was committed
+            Case 5
+            Case 6
+EndSelect
+
 
 '--------------------------------------------
 
@@ -899,6 +905,9 @@ Proc P_SetDateTime()
     P_Beep(3)
     P_Debounce()
 
+    Clear b_Escape
+
+
 Retry:
     Dim W_LastPos As Word
     Dim B_Date0   As Byte, B_Month0 As Byte, B_Year0   As Byte
@@ -974,6 +983,9 @@ Abort_NoCommit:
     B_Hour   = B_Hour0
     B_Minute = B_Minute0
     B_Seconds= B_Sec0
+    b_Escape = 1                  ' tell caller to unwind to main
+    ' restore fields...
+
     ' Long beep already handled by ISR (B_BeepLen=500 when b_Long set)
     ' Just fall through to exit
 
@@ -1063,7 +1075,7 @@ Proc P_SetField(B_Ln As Byte, B_col As Byte, B_Zero As Byte,B_Value As Byte, B_M
     Wend
     P_Debounce()
 Exit_P_SetField:
-    HRSOut "Output B_Value = ",Dec3 B_Value,13
+HRSOut "Output B_Value = ",Dec3 B_Value,13
 EndProc
 
 '---------------------------------------------------------
