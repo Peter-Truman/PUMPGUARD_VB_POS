@@ -168,7 +168,7 @@ Dim L_Last_Run As Long
 Dim SB_Current_temp As Byte
 Dim b_MTimeout As Bit
 
-Dim W_TimeoutMS As Word
+'Dim W_TimeoutMS As Word
 Dim L_TimeoutRemain As Long
 Dim b_Long As Bit                       'long press flag
 Dim W_BtnHoldMS As Word                 ' counts how long RB6 (button) is held, in ms
@@ -249,7 +249,10 @@ Symbol CURRENT_VERSION     = 1
 Symbol Write_To_3231 = %11010000 'set the 1337 to receive data                                                'RTC address write
 Symbol Read_From_3231 = %11010001 'set the 1337 to transmit data                                            'RTC address read
 
-'209                                'RTC
+
+
+
+
 
 
 ' Timer0 init for 1 ms tick @ 32 MHz (Fosc), 1:32 prescaler
@@ -657,7 +660,7 @@ EndSelect
 
         Case 3                  'Setup Menu
             'setup menu includes Setup Input1..3, 
-            SetUp_Menu:                                                             'cycle back to here until timeout or BACK selected
+            SetUp_Menu:                                                   'cycle back to here until timeout or BACK selected (long press exits)
             L_Mask   = P_BuildMask10(0,7,8,9,10,11,12,13,14,20)
             B_Option=P_Menu("SETUP MENU",L_Mask)
             If P_TimedOut() = 1 Or B_Option = 20 Then
@@ -666,7 +669,11 @@ EndSelect
             EndIf
             'Now handle the other items selected
             Select B_Option
-                Case 7                  'Menu Timeout
+
+        Case 7                  ' Menu Timeout
+            P_MenuTimeout()
+            GoTo SetUp_Menu
+                    
                 Case 8                  'Contrast
                 Case 9                  'Pwr Fail Dly
                 Case 10                 'Input 1
@@ -693,6 +700,7 @@ EndSelect
 
     DelayMS 100
     EXIT_Menus: 
+    Cls
     Clear b_MTimeout                                                                    'make sure the timeout flag is cleared
     P_Debounce()                                                                        'another debounce
 Return
@@ -1618,160 +1626,204 @@ Proc P_Signed(S_Current As SWord, S_Upper As SWord, S_Lower As SWord), SWord
     Exit_P_Signed:
 EndProc
 '---------------------------------------------------------------
-' Edit HH:MM (B_Mode=0) or MM:SS (B_Mode=1)
-' B_Min/B_Max are limits for the BIG field (hours or minutes), 0..99
-' L_Current is in SECONDS (Long, 24-bit)
-' Returns total seconds via Result
-Proc P_HH(B_Mode As Byte, L_Current As Long, B_Min As Byte, B_Max As Byte), Long
-    P_Beep(3)                  ' entry beep
-    P_Debounce()
+' B_Mode=0 -> HH:MM, B_Mode=1 -> MM:SS
+' Returns total seconds via Result. Cancel (long/timeout) returns L_Current.
+Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), Long
+    Dim B_Big As Byte, B_Small As Byte
+    Dim W_LastPos As Word
+    Dim B_Changed As Byte
+    Dim L_ScaleBig As Long, L_ScaleSmall As Long
+    Dim B_BigMax As Byte
+    Dim B_SmallMin As Byte, B_SmallMax As Byte
+    Dim L_Tmp As Long, L_Total As Long
+    Dim L_Q As Long
+    Dim B_Ticks As Byte, B_Flash As Byte
+    Dim B_Next As Byte
 
-    Dim W_LastPos  As Word
-    Dim B_Changed  As Byte
-    Dim B_BigMin   As Byte
-    Dim B_BigMax   As Byte
-    Dim B_Big      As Byte     ' HH (mode 0) or MM (mode 1)
-    Dim B_Small    As Byte     ' MM (mode 0) or SS (mode 1)
-    Dim W_TmpW     As Word
-    Dim L_Tmp      As Long
-    Dim L_Total    As Long
+    ' Clamp current into bounds
+    If L_Current < L_Min Then L_Current = L_Min
+    If L_Current > L_Max Then L_Current = L_Max
 
-    ' ---- derive initial fields from L_Current ----
-    If B_Mode = 0 Then
-        ' HH:MM
-        W_TmpW = L_Current / 3600         ' whole hours
-        If W_TmpW > 99 Then W_TmpW = 99   ' cap for 2-digit display
-        B_Big  = W_TmpW
-
-        ' remaining seconds after hours (use Long math)
-        L_Tmp    = W_TmpW
-        L_Tmp    = L_Tmp * 3600
-        L_Tmp    = L_Current - L_Tmp
-        B_Small  = L_Tmp / 60             ' 0..59
-
+    ' Scales + header
+    If B_Mode = 0 Then                 ' HH:MM
+        L_ScaleBig   = 3600
+        L_ScaleSmall = 60
         Print At 3,1,"HH:MM"
-    Else
-        ' MM:SS
-        W_TmpW = L_Current / 60           ' whole minutes
-        If W_TmpW > 99 Then W_TmpW = 99
-        B_Big  = W_TmpW
-
-        ' seconds remainder (use Long math)
-        L_Tmp   = W_TmpW
-        L_Tmp   = L_Tmp * 60
-        L_Tmp   = L_Current - L_Tmp
-        If L_Tmp < 0 Then L_Tmp = 0
-        If L_Tmp > 59 Then L_Tmp = 59
-        B_Small = L_Tmp                   ' 0..59
-
+    Else                               ' MM:SS
+        L_ScaleBig   = 60
+        L_ScaleSmall = 1
         Print At 3,1,"MM:SS"
     EndIf
 
-    ' ---- big-field limits ----
-    B_BigMin = B_Min : If B_BigMin > 99 Then B_BigMin = 99
-    B_BigMax = B_Max : If B_BigMax > 99 Then B_BigMax = 99
-    If B_Big < B_BigMin Then B_Big = B_BigMin
-    If B_Big > B_BigMax Then B_Big = B_BigMax
+    ' Split current -> fields
+    L_Tmp = L_Current / L_ScaleBig : If L_Tmp > 99 Then L_Tmp = 99
+    B_Big = L_Tmp
+    L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
+    L_Tmp = L_Current - L_Tmp
+    L_Tmp = L_Tmp / L_ScaleSmall : If L_Tmp > 59 Then L_Tmp = 59
+    B_Small = L_Tmp
 
-    ' ---- initial draw ----
+    ' Draw
     Print At 4,1, Dec2 B_Big
     Print At 4,3, ":"
     Print At 4,4, Dec2 B_Small
 
-    ' ===========================
-    ' Edit BIG field first
-    ' ===========================
+    ' ===== Edit BIG (flash cols 1–2) =====
     W_LastPos = W_EncoderPos
-    B_Changed = 0
+    B_Ticks = 0 : B_Flash = 1
     While 1 = 1
+        ' cancel
+        If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
+        If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
+
+        ' max BIG = floor(L_Max / scale_big)
+        L_Tmp = L_Max / L_ScaleBig : If L_Tmp > 99 Then L_Tmp = 99
+        B_BigMax = L_Tmp
+
+        ' encoder
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Big < B_BigMax Then
-                Inc B_Big
-                P_Beep(1)
-                B_Changed = 1
-            EndIf
+            If B_Big < B_BigMax Then Inc B_Big : B_Changed = 1 : P_Beep(1)
         ElseIf W_EncoderPos < W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Big > B_BigMin Then
-                Dec B_Big
-                P_Beep(1)
-                B_Changed = 1
+            If B_Big > 0 Then Dec B_Big : B_Changed = 1 : P_Beep(1)
+        EndIf
+
+        ' redraw when visible
+        If B_Changed = 1 Then
+            B_Changed = 0
+            If B_Flash = 1 Then Print At 4,1, Dec2 B_Big
+        EndIf
+
+        ' blink BIG pair
+        Inc B_Ticks
+        If B_Ticks >= 10 Then
+            B_Ticks = 0 : B_Flash = ~B_Flash
+            If B_Flash = 1 Then
+                Print At 4,1, Dec2 B_Big
+            Else
+                Print At 4,1, "  "
             EndIf
         EndIf
 
-        If B_Changed = 1 Then
-            B_Changed = 0
-            Print At 4,1, Dec2 B_Big
-        EndIf
-
-        ' Button ? move to small field
+        ' short press -> small
         If B_ButtonState = 0 Then
+            Print At 4,1, Dec2 B_Big                        ' ensure visible
+            While B_ButtonState = 0
+                If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
+                If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
+                DelayMS 10
+            Wend
             P_Beep(2)
-            P_Debounce()
             GoTo Edit_Small
         EndIf
-
-        DelayMS 25
+        DelayMS 15
     Wend
 
 Edit_Small:
-    ' ===========================
-    ' Edit SMALL field (0..59)
-    ' ===========================
+    ' ---- compute SMALL bounds from BIG, using integer-safe math ----
+    ' small_max = min(59, floor((L_Max - big*scale_big)/scale_small)), never <0
+    L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
+    If L_Max > L_Tmp Then
+        L_Tmp = L_Max - L_Tmp
+    Else
+        L_Tmp = 0
+    EndIf
+    L_Q = L_Tmp / L_ScaleSmall
+    If L_Q > 59 Then L_Q = 59
+    B_SmallMax = L_Q
+
+    ' small_min = max(0, ceil((L_Min - big*scale_big)/scale_small))
+    L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
+    If L_Min > L_Tmp Then
+        L_Tmp = L_Min - L_Tmp
+        ' ceil(a/b) = (a + b - 1) / b
+        L_Q = L_Tmp + (L_ScaleSmall - 1)
+        L_Q = L_Q / L_ScaleSmall
+        If L_Q > 59 Then L_Q = 59
+        B_SmallMin = L_Q
+    Else
+        B_SmallMin = 0
+    EndIf
+
+    ' clamp current small into [min..max]
+    If B_Small < B_SmallMin Then B_Small = B_SmallMin
+    If B_Small > B_SmallMax Then B_Small = B_SmallMax
+    Print At 4,4, Dec2 B_Small
+
+    ' flash SMALL digits (cols 4–5)
     W_LastPos = W_EncoderPos
-    B_Changed = 0
+    B_Ticks = 0 : B_Flash = 1
     While 1 = 1
+        ' cancel
+        If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
+        If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
+
+        ' encoder with hard clamps
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Small < 59 Then
-                Inc B_Small
-                P_Beep(1)
-                B_Changed = 1
+            B_Next = B_Small + 1
+            If B_Next > B_SmallMax Then
+                B_Small = B_SmallMax
+            Else
+                B_Small = B_Next : B_Changed = 1 : P_Beep(1)
             EndIf
         ElseIf W_EncoderPos < W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Small > 0 Then
-                Dec B_Small
-                P_Beep(1)
-                B_Changed = 1
+            If B_Small > B_SmallMin Then
+                Dec B_Small : B_Changed = 1 : P_Beep(1)
+            Else
+                B_Small = B_SmallMin
             EndIf
         EndIf
 
         If B_Changed = 1 Then
             B_Changed = 0
-            Print At 4,4, Dec2 B_Small
+            If B_Flash = 1 Then Print At 4,4, Dec2 B_Small
         EndIf
 
-        ' Button ? accept and compute total seconds
-        If B_ButtonState = 0 Then
-            P_Beep(2)
-            P_Debounce()
-
-            If B_Mode = 0 Then
-                ' HH:MM ? seconds
-                L_Tmp   = B_Big
-                L_Tmp   = L_Tmp * 3600
-                L_Total = L_Tmp
-                L_Tmp   = B_Small
-                L_Tmp   = L_Tmp * 60
-                L_Total = L_Total + L_Tmp
+        ' blink SMALL pair
+        Inc B_Ticks
+        If B_Ticks >= 10 Then
+            B_Ticks = 0 : B_Flash = ~B_Flash
+            If B_Flash = 1 Then
+                Print At 4,4, Dec2 B_Small
             Else
-                ' MM:SS ? seconds
-                L_Tmp   = B_Big
-                L_Tmp   = L_Tmp * 60
-                L_Total = L_Tmp + B_Small
+                Print At 4,4, "  "
             EndIf
+        EndIf
+
+        ' short press -> accept
+        If B_ButtonState = 0 Then
+            Print At 4,4, Dec2 B_Small
+            While B_ButtonState = 0
+                If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
+                If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
+                DelayMS 10
+            Wend
+            P_Beep(2)
+
+            ' total = big*scale_big + small*scale_small, then clamp
+            L_Total = B_Big : L_Total = L_Total * L_ScaleBig
+            L_Tmp   = B_Small : L_Tmp = L_Tmp * L_ScaleSmall
+            L_Total = L_Total + L_Tmp
+            If L_Total < L_Min Then L_Total = L_Min
+            If L_Total > L_Max Then L_Total = L_Max
 
             Result = L_Total
-            GoTo Exit_P_HH
+            GoTo Exit_P_TEdit
         EndIf
 
-        DelayMS 25
+        DelayMS 15
     Wend
 
-Exit_P_HH:
+Exit_P_TEdit:
+    ' ensure both fields visible when leaving
+    Print At 4,1, Dec2 B_Big
+    Print At 4,4, Dec2 B_Small
 EndProc
+
+
 '---------------------------------------------------------------
 GetTime:                                                                                    'read the time back from the rtc
 HRSOut "Gettime",13
@@ -1893,6 +1945,85 @@ Proc DS3231M_Enable1HzSQW()
     B_Hraw = B_Hraw & %10111111     ' clear bit6 (12/24 select) -> 24h mode
     BusOut Write_To_3231, $02, [B_Hraw]
 EndProc
+'---------------------------------------------------------------
+Proc P_UserAborted(), Bit
+    ' Returns 1 if the user long-pressed OR the menu timer expired.
+    If b_Long = 1 Then
+        Clear b_Long
+        b_Escape = 1
+        If B_BeepLen = 0 Then P_Beep(5)   ' long beep once
+        Result = 1
+        GoTo Exit_P_UserAborted
+    EndIf
+
+    If b_MTimeout = 1 Then
+        b_MTimeout = 0
+        b_Escape = 1
+        If B_BeepLen = 0 Then P_Beep(5)
+        Result = 1
+        GoTo Exit_P_UserAborted
+    EndIf
+
+    Result = 0
+Exit_P_UserAborted:
+EndProc
+'---------------------------------------------------------------
+Proc P_UI_ResetTimer()
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+    b_MTimeout = 0
+EndProc
+
+'--------------------------------------------
+' Edit and save the menu timeout (MM:SS, 30–240 s).
+' Uses P_HH_BoundedSimple(B_Mode=1, current, L_Min, L_Max).
+Proc P_MenuTimeout()
+    Dim B_Stored As Byte
+    Dim L_New    As Long
+
+    ' Clear any stale flags and show a title
+    Clear b_Long
+    Clear b_MTimeout
+    Cls
+    Print At 1,1,"MENU TIMEOUT"
+    'Print At 2,1,"(MM:SS, 00:30..04:00)"
+
+    ' Load current (seconds) from EEPROM, clamp to safe default if out of range
+    B_Stored = EEPROM_ReadByte(EE_B_Menu_Timeout)
+    If B_Stored < 30 Or B_Stored > 240 Then B_Stored = 120  ' default 2:00
+
+    ' Kick the inactivity timer so user has full time to edit
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    ' Edit with total-seconds bounds; long-press/timeout returns original
+    L_New = P_TEdit(1, B_Stored, 30, 240)
+
+    ' Cancel paths: long-press or timeout -> no commit
+    If b_Long = 1 Then
+        Clear b_Long
+        Cls
+        GoTo EXIT_P_MenuTimeout
+    End If
+    If b_MTimeout = 1 Then
+        Clear b_MTimeout
+        P_P_Timeout()
+        Cls
+        GoTo EXIT_P_MenuTimeout
+    End If
+
+    ' Commit (L_New is within 30..240, fits in Byte)
+    B_Menu_Timeout = L_New
+    EEPROM_WriteByte(EE_B_Menu_Timeout, B_Menu_Timeout)
+
+    ' Refresh inactivity timer to the new value
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    ' Positive feedback and leave
+    P_Exit_OK()
+    Cls
+    EXIT_P_MenuTimeout:
+
+EndProc
 
 
+'--------------------------------------------
 
