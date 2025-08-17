@@ -137,7 +137,8 @@ Dim B_Version As Byte                               'Which version are we on
 Dim B_Log_Pos As Byte                                'Last Used Log Position
 Dim B_Menu_Timeout As Byte                          'Timeout after x seconds
 Dim B_Contrast As Byte                              'set a contrast
-Dim B_Relay_Pulse As Byte                           'How long to hold the pulse relay
+'Dim B_Relay_Pulse As Byte                           'How long to hold the pulse relay
+Dim B_PwrFailDelay As Byte
 Dim B_System_Flags As Byte                           'System Flag - set alias for each but
 Dim B_HT As Byte                                    'High Temp Limit (deg C)
 Dim B_LFlo As Byte                                  'Low Flow limit (%)  
@@ -160,6 +161,8 @@ Dim W_PLP_BP As Word
 Dim W_SLP_BP As Word
 Dim W_HTBP As Word
 Dim W_LFloBP As Word
+
+
 
 Dim L_New_RunTime As Long
 Dim L_Current_RunTime As Long
@@ -199,6 +202,7 @@ Symbol EE_B_Relay_Pulse    = 0x04  ' B_Relay_Pulse
 Symbol EE_B_System_Flags   = 0x05  ' B_System_Flags  
 Symbol EE_B_HT             = 0x06  ' B_HT  
 Symbol EE_B_LFlo           = 0x07  ' B_LFlo  
+Symbol EE_B_PwrFailDelay   = 0x08  'pwr fail detect delay
 
 ' 0x08–0x0F reserved for future byte fields  
 
@@ -221,6 +225,7 @@ Symbol EE_W_PLP_BP         = 0x28  ' W_PLP_BP
 Symbol EE_W_SLP_BP         = 0x2A  ' W_SLP_BP  
 Symbol EE_W_HTBP           = 0x2C  ' W_HTBP  
 Symbol EE_W_LFloBP         = 0x2E  ' W_LFloBP  
+Symbol EE_W_RelayPulseSec = 0x50     ' uses 0x50–0x51
 
 ' 0x30–0x35 reserved for future word fields  
 
@@ -674,13 +679,23 @@ EndSelect
             P_MenuTimeout()
             GoTo SetUp_Menu
                     
-                Case 8                  'Contrast
-                Case 9                  'Pwr Fail Dly
+        Case 8                  'Contrast
+            P_SetContrast()
+            GoTo SetUp_Menu
+
+        Case 9                  ' Pwr Fail Dly
+            P_SetPwrDelay()
+            GoTo SetUp_Menu
+
                 Case 10                 'Input 1
                 Case 11                 'Input 2
                 Case 12                 'Input 3
                 Case 13                 'End Runtime
-                Case 14                 'Pulse Duration
+        Case 14                         'Relay Pulse
+            P_SetPulse()
+            GoTo SetUp_Menu
+            
+
             EndSelect
 
 '--------------------------------------------
@@ -730,10 +745,12 @@ Proc P_LoadFromEEPROM()
         B_Log_Pos       = EEPROM_ReadByte(EE_B_Log_Pos)
         B_Menu_Timeout  = EEPROM_ReadByte(EE_B_Menu_Timeout)
         B_Contrast      = EEPROM_ReadByte(EE_B_Contrast)
-        B_Relay_Pulse   = EEPROM_ReadByte(EE_B_Relay_Pulse)
+        'B_Relay_Pulse   = EEPROM_ReadByte(EE_B_Relay_Pulse)
         B_System_Flags  = EEPROM_ReadByte(EE_B_System_Flags)
         B_HT            = EEPROM_ReadByte(EE_B_HT)
         B_LFlo          = EEPROM_ReadByte(EE_B_LFlo)
+        B_PwrFailDelay = EEPROM_ReadByte(EE_B_PwrFailDelay)
+        B_PwrFailDelay = EEPROM_ReadByte(EE_B_PwrFailDelay)
 
         ' Word fields
         W_Con_2_Cnfg    = EEPROM_ReadWord(EE_W_Con_2_Cnfg)
@@ -851,10 +868,11 @@ Proc P_InitEEPROM()
         EEPROM_WriteByte(EE_B_Log_Pos,      0)
         EEPROM_WriteByte(EE_B_Menu_Timeout, 120)
         EEPROM_WriteByte(EE_B_Contrast,     127)
-        EEPROM_WriteByte(EE_B_Relay_Pulse,  5)
+        'EEPROM_WriteByte(EE_B_Relay_Pulse,  5)
         EEPROM_WriteByte(EE_B_System_Flags, 0)
         EEPROM_WriteByte(EE_B_HT,           40)
         EEPROM_WriteByte(EE_B_LFlo,         25)
+        EEPROM_WriteByte(EE_B_PwrFailDelay, 5)   ' default 0 s
 
         '--- Word defaults (16-bit) ---
         EEPROM_WriteWord(EE_W_Con_2_Cnfg,   444)
@@ -873,6 +891,7 @@ Proc P_InitEEPROM()
         EEPROM_WriteWord(EE_W_SLP_BP,      60)
         EEPROM_WriteWord(EE_W_HTBP,        60)
         EEPROM_WriteWord(EE_W_LFloBP,      60)
+        EEPROM_WriteWord(EE_W_RelayPulseSec, 5)   ' 5 seconds default
 
         '--- 32-bit defaults (Double) ---
         EEPROM_WriteDouble(EE_L_New_RunTime,     0)
@@ -1090,34 +1109,6 @@ EndProc
 Proc P_Debounce()
 While B_ButtonState =0:DelayMS 10: Wend: DelayMS 100      
 EndProc
-'---------------------------------------------------------
-'Proc P_Ok(W_LastPos As Word),Bit             'always on the last row            
-'    Dim b_flag As Bit
-'    P_Debounce()
-'    While 1=1
-'        If b_flag=0 Then
-'            Print At 4,1,"   [OK]    Retry "
-'            Result = 1
-'        Else
-'            Print At 4,1,"    OK    [Retry]"
-'            Result = 0
-'        EndIf
-'        If W_EncoderPos <> W_LastPos Then
-'            P_Beep(2)
-'            b_flag = ~b_flag
-'            W_LastPos = W_EncoderPos
-'        EndIf
- 
-'        If _ENC_SW = 0 Then          ' button pressed
-'            P_Beep(2) 
-'            While _ENC_SW = 0 :DelayMS 10: Wend: DelayMS 50
-'            GoTo Exit_P_Ok:
-'        EndIf
-'        DelayMS 150        
-'    Wend
-'    Exit_P_Ok:    
-'    HRSOut "Result = ",Dec1 b_flag,13
-'EndProc
 '---------------------------------------------------------
 Proc P_Beep(B_Len As Byte)
     'sets the buzzer going - decriment in interrupt
@@ -2023,7 +2014,159 @@ Proc P_MenuTimeout()
     EXIT_P_MenuTimeout:
 
 EndProc
-
-
 '--------------------------------------------
+' Edit LCD contrast (0..10). 
+' - Title at line 1, col 1
+' - Value shown/edited at line 4, col 1 (two digits)
+' - Short press = accept and save to EEPROM
+' - Long press or timeout = cancel (no changes)
+Proc P_SetContrast()
+    Dim W_LastPos As Word
+    Dim B_Val     As Byte
 
+    Cls
+    Print At 1,1,"Set Contrast"
+
+    ' Start / guards
+    Clear b_MTimeout
+    Clear b_Long
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    ' Load current and clamp
+    B_Val = B_Contrast
+    If B_Val > 10 Then B_Val = 10
+    Print At 4,1, Dec2 B_Val
+
+    W_LastPos = W_EncoderPos
+
+    While 1 = 1
+        ' ---- cancel paths ----
+        If b_Long = 1 Then
+            Clear b_Long
+            Cls
+            Return                 ' no change
+        EndIf
+        If b_MTimeout = 1 Then
+            Clear b_MTimeout
+            P_P_Timeout()          ' timeout tone
+            Cls
+            Return                 ' no change
+        EndIf
+
+        ' ---- encoder movement ----
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 10 Then
+                Inc B_Val
+                P_Beep(1)
+                Print At 4,1, Dec2 B_Val
+            EndIf
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then
+                Dec B_Val
+                P_Beep(1)
+                Print At 4,1, Dec2 B_Val
+            EndIf
+        EndIf
+
+        ' ---- short press = accept ----
+        If B_ButtonState = 0 Then
+            ' wait for release; still honor cancel during hold
+            While B_ButtonState = 0
+                If b_Long = 1 Then
+                    Clear b_Long
+                    Cls
+                    GoTo EXIT_P_SetContrast
+                EndIf
+                If b_MTimeout = 1 Then
+                    Clear b_MTimeout
+                    P_P_Timeout()
+                    Cls
+                    GoTo EXIT_P_SetContrast
+                EndIf
+                DelayMS 10
+            Wend
+
+            ' accept
+            P_Beep(2)
+            B_Contrast = B_Val
+            EEPROM_WriteByte(EE_B_Contrast, B_Contrast)
+            Cls
+            Return
+        EndIf
+
+        DelayMS 15
+    Wend
+    EXIT_P_SetContrast:
+EndProc
+'--------------------------------------------
+' Edit the power-fail delay (0..60 seconds) using P_TEdit (MM:SS)
+Proc P_SetPwrDelay()
+    Dim L_New As Long
+
+    Cls
+    Print At 1,1,"Pwr Fail Delay"
+
+    ' Clear/arm UI guards
+    Clear b_Long
+    Clear b_MTimeout
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    ' Edit in MM:SS (mode=1), bounds 0..60 s
+    L_New = P_TEdit(1, B_PwrFailDelay, 1, 60)
+
+    ' Cancel paths: long-press or timeout -> no change
+    If b_Long = 1 Then
+        Clear b_Long
+        Cls
+        Return
+    EndIf
+    If b_MTimeout = 1 Then
+        Clear b_MTimeout
+        P_P_Timeout()
+        Cls
+        Return
+    EndIf
+
+    ' Accept: save (seconds fit in a byte)
+    P_Beep(2)
+    B_PwrFailDelay = L_New
+    EEPROM_WriteByte (EE_B_PwrFailDelay, B_PwrFailDelay)
+    Cls
+EndProc
+'--------------------------------------------
+' Edit Pulse Duration (MM:SS). Uses P_TEdit(mode=1).
+' - Reads WORD seconds from EE_W_RelayPulseSec (migrates from old byte if needed)
+' - Min = 1s, Max = 600s (10 min)
+' - Long-press / timeout cancel inside P_TEdit -> returns 0 (no save)
+
+Proc P_SetPulse()
+    Dim W_Cur As Word
+    Dim L_New As Long
+
+    ' Read current; seed a sensible default if empty/out of range
+    W_Cur = EEPROM_ReadWord(EE_W_RelayPulseSec)
+    If W_Cur < 1 Or W_Cur > 600 Then W_Cur = 5
+
+    Cls
+    Print At 1,1,"Set Pulse Duration"
+
+    ' mode=1 -> MM:SS; returns 0 on cancel (timeout/long-press handled inside)
+    L_New = P_TEdit(1, W_Cur, 1, 600)
+
+    If L_New = 0 Then
+        ' cancelled: no write
+        Clear b_Long
+        Clear b_MTimeout
+        Cls
+        GoTo Exit_P_SetPulse
+    EndIf
+
+    If L_New <> W_Cur Then
+        EEPROM_WriteWord (EE_W_RelayPulseSec, L_New)
+    EndIf
+
+Exit_P_SetPulse:
+EndProc
+'--------------------------------------------
