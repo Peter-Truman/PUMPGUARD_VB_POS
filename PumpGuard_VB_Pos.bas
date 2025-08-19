@@ -2094,7 +2094,7 @@ Proc P_Output(S_Title As String * 18, B_Type As Byte, B_Inpt As Byte)
     Dim B_Val As Byte          ' working selection for current field (0/1 or 0..2)
     Dim B_Step As Byte         ' current step index
     Dim B_LastVal As Byte      ' to avoid unnecessary redraws
-    Dim S_Line As String * 18  ' (unused temp; preserved)
+    Dim S_Line As String * 18  ' (unused temp; kept to preserve your structure)
 
     ' --- select which input’s config word ---
     Select B_Inpt
@@ -2112,25 +2112,10 @@ Proc P_Output(S_Title As String * 18, B_Type As Byte, B_Inpt As Byte)
     W_Cfg  = EEPROM_ReadWord(EE_Addr)
     W_Orig = W_Cfg
 
-    ' --- UI guards & header (pre) ---
-    Clear b_Long
-    Clear b_MTimeout
-    Clear b_ReInitLCD
-    L_TimeoutRemain = B_Menu_Timeout * 1000
+    ' >>> Jump over helper labels so we don't execute them <<<
+    GoTo CodeStart
 
-    Cls
-    Print At 1,1, S_Title
-
-    ' Swallow launching press, then re-arm flags/timer
-    P_Debounce()
-    Clear b_Long
-    Clear b_MTimeout
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-
-    ' ===== jump over helper labels so they don't run inline =====
-    GoTo POut_Body
-
-' ====================== helper subs (label gosubs) =========================
+    ' ===== helper subs (label gosubs) =======================================
 Label_GetBit:
     ' uses: B_Val=bit# input; returns B_Val=0/1
     Dim W_M As Word, B_I As Byte
@@ -2191,41 +2176,51 @@ SetPair:
     ' clear existing two bits
     If W_Cfg & W_M4 <> 0 Then W_Cfg = W_Cfg - W_M4
     If W_Cfg & (W_M4 * 2) <> 0 Then W_Cfg = W_Cfg - (W_M4 * 2)
-    ' add new
-    B_LoN = B_LastVal & 1
-    B_HiN = (B_LastVal & 2) / 2
+    ' add new (no shifts; Positron-safe)
+    B_LoN = 0 : If B_LastVal & 1 <> 0 Then B_LoN = 1
+    B_HiN = 0 : If B_LastVal & 2 <> 0 Then B_HiN = 1
     If B_LoN = 1 Then W_Cfg = W_Cfg + W_M4
     If B_HiN = 1 Then W_Cfg = W_Cfg + (W_M4 * 2)
     Return
 
 DrawTwoChoice_ME:
-    ' Line 3 baseline and brackets for Master Enable (Disabled/Enabled)
+    ' Line 2 already has the field title.
+    ' Line 3 blank to avoid ghosting.
     Print At 3,1,"                    "
-    Print At 3,2,"Disabled"
-    Print At 3,12,"Enabled"
-    ' clear brackets
-    Print At 3,1," "
-    Print At 3,10," "
-    Print At 3,11," "
-    Print At 3,19," "
-    ' draw selected pair
+    ' Line 4 shows choices with the current selection bracketed.
+    Print At 4,1,"                    "
     If B_Val = 0 Then
-        Print At 3,1,"["  : Print At 3,10,"]"
+        Print At 4,1,"[Disabled] Enabled"
     Else
-        Print At 3,11,"[" : Print At 3,19,"]"
+        Print At 4,2,"Disabled [Enabled]"
     EndIf
     Return
 
-DrawOneOfThree:
-    ' Shows current 3-state as bracketed token on line 3
+DrawTriAction:
+    ' For 2-bit action fields: NoAct / Pulse / Latch
     Print At 3,1,"                    "
+    Print At 4,1,"                    "
     Select B_Val
         Case 0
-            Print At 3,7,"[NoAct]"
+            Print At 4,1,"[No]  Pulse   Latch"
         Case 1
-            Print At 3,7,"[Pulse]"
+            Print At 4,1," No  [Pulse]  Latch"
         Case Else
-            Print At 3,7,"[Latch]"
+            Print At 4,1," No   Pulse  [Latch]"
+    EndSelect
+    Return
+
+DrawTriDisp:
+    ' For Display field: NoDisp / Always / OnEn
+    Print At 3,1,"                    "
+    Print At 4,1,"                    "
+    Select B_Val
+        Case 0
+            Print At 4,1,"[No]  Yes  When En"
+        Case 1
+            Print At 4,1," No  [Yes] When En"
+        Case Else
+            Print At 4,1," No   Yes [When En]"
     EndSelect
     Return
 
@@ -2267,9 +2262,22 @@ DrawFieldTitle:
         EndSelect
     EndIf
     Return
-' ==================== end helpers ==========================================
+    ' ===== end helpers ======================================================
 
-POut_Body:
+CodeStart:
+    ' UI guards & header (after skipping helpers)
+    Clear b_Long
+    Clear b_MTimeout
+    Clear b_ReInitLCD
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    Cls
+    Print At 1,1, S_Title
+    P_Debounce()                       ' swallow the launching short-press
+    Clear b_Long                       ' re-arm after debounce
+    Clear b_MTimeout
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
     ' determine number of steps for this type (for reference)
     Dim B_Total As Byte
     If B_Type = 1 Then
@@ -2282,47 +2290,59 @@ POut_Body:
     B_Step = 0
 Step_ME:
     GoSub DrawFieldTitle
-    B_Val = 2 : GoSub Label_GetBit            ' returns B_Val = 0/1
-    B_LastVal = 255
+    ' load current bit 2
+    B_Val = 2 : GoSub Label_GetBit           ' returns B_Val = 0/1
+    B_LastVal = 255                           ' force first draw
     GoSub DrawTwoChoice_ME
     W_LastPos = W_EncoderPos
-    While 1 = 1
-        If b_Long = 1 Or b_MTimeout = 1 Then
-            Clear b_Long : b_MTimeout = 0
-            W_Cfg = W_Orig : Cls : Return
-        EndIf
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 1 Then Inc B_Val : P_Beep(1)
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then Dec B_Val : P_Beep(1)
-        EndIf
-        If B_Val <> B_LastVal Then
-            B_LastVal = B_Val : GoSub DrawTwoChoice_ME
-        EndIf
-        If B_ButtonState = 0 Then
-            While B_ButtonState = 0
-                If b_Long = 1 Or b_MTimeout = 1 Then
-                    Clear b_Long : b_MTimeout = 0
-                    W_Cfg = W_Orig : Cls : Return
-                EndIf
-                DelayMS 10
-            Wend
-            P_Beep(2)
-            B_LastVal = B_Val
-            B_Val = 2 : GoSub Label_SetBit
-            Break
-        EndIf
-        DelayMS 15
-    Wend
-
-    If B_Type = 1 Then
-        B_Step = 1 : GoSub DrawFieldTitle
-        GoTo Step_HighOnly
-    Else
-        GoTo Step_High
+ME_Loop:
+    ' cancel?
+    If b_Long = 1 Or b_MTimeout = 1 Then
+        Clear b_Long : b_MTimeout = 0
+        W_Cfg = W_Orig
+        Cls
+        Return
     EndIf
+    ' encoder
+    If W_EncoderPos > W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val < 1 Then
+            Inc B_Val : P_Beep(1)
+        EndIf
+    ElseIf W_EncoderPos < W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val > 0 Then
+            Dec B_Val : P_Beep(1)
+        EndIf
+    EndIf
+    ' redraw if changed
+    If B_Val <> B_LastVal Then
+        B_LastVal = B_Val
+        GoSub DrawTwoChoice_ME
+    EndIf
+    ' short press -> accept and next
+    If B_ButtonState = 0 Then
+        While B_ButtonState = 0
+            If b_Long = 1 Or b_MTimeout = 1 Then
+                Clear b_Long : b_MTimeout = 0
+                W_Cfg = W_Orig : Cls : Return
+            EndIf
+            DelayMS 10
+        Wend
+        P_Beep(2)
+        ' write bit 2
+        B_LastVal = B_Val
+        B_Val = 2 : GoSub Label_SetBit
+        ' next step selection by type
+        If B_Type = 1 Then
+            B_Step = 1 : GoSub DrawFieldTitle
+            GoTo Step_HighOnly
+        Else
+            GoTo Step_High
+        EndIf
+    EndIf
+    DelayMS 15
+    GoTo ME_Loop
 
     ' ---- Step 1: High action (bits 7..8) ----
 Step_High:
@@ -2330,167 +2350,153 @@ Step_High:
 Step_HighOnly:
     B_Val = 7 : GoSub GetPair
     If B_Val > 2 Then B_Val = 2
-    B_LastVal = 255 : GoSub DrawOneOfThree
+    B_LastVal = 255
+    GoSub DrawTriAction
     W_LastPos = W_EncoderPos
-    While 1 = 1
-        If b_Long = 1 Or b_MTimeout = 1 Then
-            Clear b_Long : b_MTimeout = 0
-            W_Cfg = W_Orig : Cls : Return
-        EndIf
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 2 Then Inc B_Val : P_Beep(1)
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then Dec B_Val : P_Beep(1)
-        EndIf
-        If B_Val <> B_LastVal Then
-            B_LastVal = B_Val : GoSub DrawOneOfThree
-        EndIf
-        If B_ButtonState = 0 Then
-            While B_ButtonState = 0
-                If b_Long = 1 Or b_MTimeout = 1 Then
-                    Clear b_Long : b_MTimeout = 0
-                    W_Cfg = W_Orig : Cls : Return
-                EndIf
-                DelayMS 10
-            Wend
-            P_Beep(2)
-            B_LastVal = B_Val : B_Val = 7 : GoSub SetPair
-            Break
-        EndIf
-        DelayMS 15
-    Wend
-
-    If B_Type = 1 Then
-        GoTo Commit_Save
+HIGH_Loop:
+    If b_Long = 1 Or b_MTimeout = 1 Then
+        Clear b_Long : b_MTimeout = 0
+        W_Cfg = W_Orig : Cls : Return
     EndIf
+    If W_EncoderPos > W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val < 2 Then Inc B_Val : P_Beep(1)
+    ElseIf W_EncoderPos < W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val > 0 Then Dec B_Val : P_Beep(1)
+    EndIf
+    If B_Val <> B_LastVal Then
+        B_LastVal = B_Val
+        GoSub DrawTriAction
+    EndIf
+    If B_ButtonState = 0 Then
+        While B_ButtonState = 0
+            If b_Long = 1 Or b_MTimeout = 1 Then
+                Clear b_Long : b_MTimeout = 0
+                W_Cfg = W_Orig : Cls : Return
+            EndIf
+            DelayMS 10
+        Wend
+        P_Beep(2)
+        B_LastVal = B_Val : B_Val = 7 : GoSub SetPair
+        If B_Type = 1 Then GoTo Commit_Save
+        GoTo Step_PL
+    EndIf
+    DelayMS 15
+    GoTo HIGH_Loop
 
-    ' ---- Step 2: Primary Low (bits 9..10) ----
+    ' ---- Step 2: Primary Low action (bits 9..10) ----
+Step_PL:
     B_Step = 2 : GoSub DrawFieldTitle
     B_Val = 9 : GoSub GetPair
     If B_Val > 2 Then B_Val = 2
-    B_LastVal = 255 : GoSub DrawOneOfThree
+    B_LastVal = 255 : GoSub DrawTriAction
     W_LastPos = W_EncoderPos
-    While 1 = 1
-        If b_Long = 1 Or b_MTimeout = 1 Then
-            Clear b_Long : b_MTimeout = 0
-            W_Cfg = W_Orig : Cls : Return
-        EndIf
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 2 Then Inc B_Val : P_Beep(1)
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then Dec B_Val : P_Beep(1)
-        EndIf
-        If B_Val <> B_LastVal Then
-            B_LastVal = B_Val : GoSub DrawOneOfThree
-        EndIf
-        If B_ButtonState = 0 Then
-            While B_ButtonState = 0
-                If b_Long = 1 Or b_MTimeout = 1 Then
-                    Clear b_Long : b_MTimeout = 0
-                    W_Cfg = W_Orig : Cls : Return
-                EndIf
-                DelayMS 10
-            Wend
-            P_Beep(2)
-            B_LastVal = B_Val : B_Val = 9 : GoSub SetPair
-            Break
-        EndIf
-        DelayMS 15
-    Wend
+PL_Loop:
+    If b_Long = 1 Or b_MTimeout = 1 Then
+        Clear b_Long : b_MTimeout = 0
+        W_Cfg = W_Orig : Cls : Return
+    EndIf
+    If W_EncoderPos > W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val < 2 Then Inc B_Val : P_Beep(1)
+    ElseIf W_EncoderPos < W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val > 0 Then Dec B_Val : P_Beep(1)
+    EndIf
+    If B_Val <> B_LastVal Then
+        B_LastVal = B_Val : GoSub DrawTriAction
+    EndIf
+    If B_ButtonState = 0 Then
+        While B_ButtonState = 0
+            If b_Long = 1 Or b_MTimeout = 1 Then
+                Clear b_Long : b_MTimeout = 0
+                W_Cfg = W_Orig : Cls : Return
+            EndIf
+            DelayMS 10
+        Wend
+        P_Beep(2)
+        B_LastVal = B_Val : B_Val = 9 : GoSub SetPair
+        GoTo Step_SL
+    EndIf
+    DelayMS 15
+    GoTo PL_Loop
 
-    ' ---- Step 3: Secondary Low (bits 11..12) ----
+    ' ---- Step 3: Secondary Low action (bits 11..12) ----
+Step_SL:
     B_Step = 3 : GoSub DrawFieldTitle
     B_Val = 11 : GoSub GetPair
     If B_Val > 2 Then B_Val = 2
-    B_LastVal = 255 : GoSub DrawOneOfThree
+    B_LastVal = 255 : GoSub DrawTriAction
     W_LastPos = W_EncoderPos
-    While 1 = 1
-        If b_Long = 1 Or b_MTimeout = 1 Then
-            Clear b_Long : b_MTimeout = 0
-            W_Cfg = W_Orig : Cls : Return
-        EndIf
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 2 Then Inc B_Val : P_Beep(1)
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then Dec B_Val : P_Beep(1)
-        EndIf
-        If B_Val <> B_LastVal Then
-            B_LastVal = B_Val : GoSub DrawOneOfThree
-        EndIf
-        If B_ButtonState = 0 Then
-            While B_ButtonState = 0
-                If b_Long = 1 Or b_MTimeout = 1 Then
-                    Clear b_Long : b_MTimeout = 0
-                    W_Cfg = W_Orig : Cls : Return
-                EndIf
-                DelayMS 10
-            Wend
-            P_Beep(2)
-            B_LastVal = B_Val : B_Val = 11 : GoSub SetPair
-            Break
-        EndIf
-        DelayMS 15
-    Wend
+SL_Loop:
+    If b_Long = 1 Or b_MTimeout = 1 Then
+        Clear b_Long : b_MTimeout = 0
+        W_Cfg = W_Orig : Cls : Return
+    EndIf
+    If W_EncoderPos > W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val < 2 Then Inc B_Val : P_Beep(1)
+    ElseIf W_EncoderPos < W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val > 0 Then Dec B_Val : P_Beep(1)
+    EndIf
+    If B_Val <> B_LastVal Then
+        B_LastVal = B_Val : GoSub DrawTriAction
+    EndIf
+    If B_ButtonState = 0 Then
+        While B_ButtonState = 0
+            If b_Long = 1 Or b_MTimeout = 1 Then
+                Clear b_Long : b_MTimeout = 0
+                W_Cfg = W_Orig : Cls : Return
+            EndIf
+            DelayMS 10
+        Wend
+        P_Beep(2)
+        B_LastVal = B_Val : B_Val = 11 : GoSub SetPair
+        GoTo Step_Disp
+    EndIf
+    DelayMS 15
+    GoTo SL_Loop
 
     ' ---- Step 4: Display (bits 13..14) ----
+Step_Disp:
     B_Step = 4 : GoSub DrawFieldTitle
     B_Val = 13 : GoSub GetPair
     If B_Val > 2 Then B_Val = 2
     B_LastVal = 255
-    Print At 3,1,"                    "
-    Select B_Val
-        Case 0
-            Print At 3,6,"[NoDisp]"
-        Case 1
-            Print At 3,7,"[Always]"
-        Case Else
-            Print At 3,6,"[WhenEn]"
-    EndSelect
+    GoSub DrawTriDisp
     W_LastPos = W_EncoderPos
-    While 1 = 1
-        If b_Long = 1 Or b_MTimeout = 1 Then
-            Clear b_Long : b_MTimeout = 0
-            W_Cfg = W_Orig : Cls : Return
-        EndIf
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 2 Then Inc B_Val : P_Beep(1)
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then Dec B_Val : P_Beep(1)
-        EndIf
-        If B_Val <> B_LastVal Then
-            B_LastVal = B_Val
-            Print At 3,1,"                    "
-            Select B_Val
-                Case 0
-                    Print At 3,6,"[NoDisp]"
-                Case 1
-                    Print At 3,7,"[Always]"
-                Case Else
-                    Print At 3,6,"[WhenEn]"
-            EndSelect
-        EndIf
-        If B_ButtonState = 0 Then
-            While B_ButtonState = 0
-                If b_Long = 1 Or b_MTimeout = 1 Then
-                    Clear b_Long : b_MTimeout = 0
-                    W_Cfg = W_Orig : Cls : Return
-                EndIf
-                DelayMS 10
-            Wend
-            P_Beep(2)
-            B_LastVal = B_Val : B_Val = 13 : GoSub SetPair
-            Break
-        EndIf
-        DelayMS 15
-    Wend
+DISP_Loop:
+    If b_Long = 1 Or b_MTimeout = 1 Then
+        Clear b_Long : b_MTimeout = 0
+        W_Cfg = W_Orig : Cls : Return
+    EndIf
+    If W_EncoderPos > W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val < 2 Then Inc B_Val : P_Beep(1)
+    ElseIf W_EncoderPos < W_LastPos Then
+        W_LastPos = W_EncoderPos
+        If B_Val > 0 Then Dec B_Val : P_Beep(1)
+    EndIf
+    If B_Val <> B_LastVal Then
+        B_LastVal = B_Val
+        GoSub DrawTriDisp
+    EndIf
+    If B_ButtonState = 0 Then
+        While B_ButtonState = 0
+            If b_Long = 1 Or b_MTimeout = 1 Then
+                Clear b_Long : b_MTimeout = 0
+                W_Cfg = W_Orig : Cls : Return
+            EndIf
+            DelayMS 10
+        Wend
+        P_Beep(2)
+        B_LastVal = B_Val : B_Val = 13 : GoSub SetPair
+        GoTo Commit_Save
+    EndIf
+    DelayMS 15
+    GoTo DISP_Loop
 
 Commit_Save:
     ' commit to globals and EEPROM
