@@ -1,64 +1,120 @@
 '****************************************************************
-'*  Name    : UNTITLED.BAS                                      *
+'*  Name    : IRRISYS_MAIN.BAS                                  *
 '*  Author  : Peter W Truman                                    *
 '*  Notice  : Copyright (c) 2025 PCT Remote Sensing Pty Ltd     *
 '*          : All Rights Reserved                               *
 '*  Date    : 24/07/2025                                        *
-'*  Version : 1.0                                               *
-'*  Notes   :                                                   *
-'*          :                                                   *
+'*  Version : 1.1                                               *
+'*  Notes   : Simplified list-based menu system (Positron 8)    *
+'*            - No bitmask builders                             *
+'*            - Max 8 IDs per menu screen                       *
+'*            - Order preserved; BACK optional (ID=20)          *
 '****************************************************************
+(*
+Input configurations registers ( W_In_1_Cnfg x3 )
+
+MSB
+15      14      13      12      11      10      09      08      07      06      05      04      03      02      01      00
+        D1      D0      FASL1   FASL0   FAPL1   FAPL0   FAH1    FAH0    DF1     DF0     IE1     IE0     ME      S1      S0
+        
+Bit     Funct
+00-01   Sensor              00=digital
+S0/S1                       01=pressure
+                            10=temperature
+                            11=flow
+                                                                                        
+02      Master Enable       0=Disabled
+ME                          1=enabled
+
+03-04   Indiv Enable        00=high and low disabled
+IE0/IE1                     01=low disabled, high enabled
+                            10=low enabled, high disabled
+                            11=low enabled, high enabled
+                        
+05-06   Dig Fault State     00=digital not used
+DF0/DF1                     01=high going
+                            10=low going
+                            
+07-08   Fault Action High   00=no action        
+FAH0/FAH1                   01=Pulse
+                            10=latch
+
+09-10   Fault Action PL     00=no action
+FAPL0/FAPL1                 01=Pulse
+                            10=Latch
+                            
+11-12   Fault Action SL     00=no action
+FASL0/FASL1                 01=Pulse
+                            10=Latch
+
+13-14   Display             00=no display
+D0/D1                       01=always display
+                            10=display if enabled
+
+'-------------------------------------------------------------
+Procedure for setting up inputs
+1 - define type (Digital, Pressssure, Temp, Flow'
+2 - If Digital then set fail high/ fail low, then set Pulse, Latch, no action
+
+3 - If Pressure then set scale
+4 - set rly action for High, Primary Low, Secondary low (Latch, Pulse)
 
 
 
-'NOTEs
 
+
+
+
+
+
+
+*)
+' === Device & configuration ===================================================
 Device = 18F2525
 
 Config_Start
-  OSC = INTIO67	;Internal oscillator block, port function on RA6 and RA7
-  FCMEN = OFF	;Fail-Safe Clock Monitor disabled
-  IESO = OFF	;Oscillator Switchover mode disabled
-  PWRT = OFF	;PWRT disabled
-  BOREN = SBORDIS	;Brown-out Reset enabled in hardware only (SBOREN is disabled)
-  BORV = 3	;Minimum setting
-  WDT = OFF	;WDT disabled (control is placed on the SWDTEN bit)
-  WDTPS = 32768	;1:32768
-  CCP2MX = PORTC	;CCP2 input/output is multiplexed with RC1
-  PBADEN = OFF	;PORTB<4:0> pins are configured as digital I/O on Reset
-  LPT1OSC = OFF	;Timer1 configured for higher power operation
-  MCLRE = On	;MCLR pin enabled; RE3 input pin disabled
-  STVREN = On	;Stack full/underflow will cause Reset
-  LVP = OFF	;Single-Supply ICSP disabled
-  XINST = OFF	;Instruction set extension and Indexed Addressing mode disabled (Legacy mode)
-  Debug = OFF	;Background debugger disabled, RB6 and RB7 configured as general purpose I/O pins
-  Cp0 = OFF	;Block 0 (000800-003FFFh) not code-protected
-  CP1 = OFF	;Block 1 (004000-007FFFh) not code-protected
-  CP2 = OFF	;Block 2 (008000-00BFFFh) not code-protected
-  CPB = OFF	;Boot block (000000-0007FFh) not code-protected
-  CPD = OFF	;Data EEPROM not code-protected
-  WRT0 = OFF	;Block 0 (000800-003FFFh) not write-protected
-  WRT1 = OFF	;Block 1 (004000-007FFFh) not write-protected
-  WRT2 = OFF	;Block 2 (008000-00BFFFh) not write-protected
-  WRTC = OFF	;Configuration registers (300000-3000FFh) not write-protected
-  WRTB = OFF	;Boot Block (000000-0007FFh) not write-protected
-  WRTD = OFF	;Data EEPROM not write-protected
-  EBTR0 = OFF	;Block 0 (000800-003FFFh) not protected from table reads executed in other blocks
-  EBTR1 = OFF	;Block 1 (004000-007FFFh) not protected from table reads executed in other blocks
-  EBTR2 = OFF	;Block 2 (008000-00BFFFh) not protected from table reads executed in other blocks
-  EBTRB = OFF	;Boot Block (000000-0007FFh) not protected from table reads executed in other blocks
+  OSC = INTIO67
+  FCMEN = OFF
+  IESO = OFF
+  PWRT = OFF
+  BOREN = SBORDIS
+  BORV = 3
+  WDT = OFF
+  WDTPS = 32768
+  CCP2MX = PORTC
+  PBADEN = OFF
+  LPT1OSC = OFF
+  MCLRE = On
+  STVREN = On
+  LVP = OFF
+  XINST = OFF
+  Debug = OFF
+  Cp0 = OFF
+  CP1 = OFF
+  CP2 = OFF
+  CPB = OFF
+  CPD = OFF
+  WRT0 = OFF
+  WRT1 = OFF
+  WRT2 = OFF
+  WRTC = OFF
+  WRTB = OFF
+  WRTD = OFF
+  EBTR0 = OFF
+  EBTR1 = OFF
+  EBTR2 = OFF
+  EBTRB = OFF
 Config_End
 
-OSCCON = %01110000 ' IRCF = 111 for 8 MHz
-OSCTUNE.6 = 1 ' Enable PLL for x4 (8 MHz * 4 = 32 MHz)
-ADCON1 = $0F       ' All pins digital
+OSCCON   = %01110000        ' 8 MHz
+OSCTUNE.6 = 1               ' PLL x4 -> 32 MHz
+ADCON1  = $0F               ' All digital
 
 All_Digital = True
 Declare Xtal = 32
+Declare PORTB_Pullups=On
 
-Declare PORTB_Pullups=On                                                                        'enable pullups
-
-'Definition
+' === Pins =====================================================================
 Symbol _BUZZER  = PORTC.2
 Symbol _PNP1    = PORTA.4
 Symbol _PNP4    = PORTB.3
@@ -67,228 +123,192 @@ Symbol _PNP3    = PORTB.5
 Symbol _SP1     = PORTC.0
 Symbol _Out     = PORTC.1
 
-'duplicate LCD pin assignments
-Symbol LCD_D4_PIN = PORTA.0        ' D4 is the first of 4 contiguous pins (D4..D7)
+' LCD (4-bit)
+Symbol LCD_D4_PIN = PORTA.0
 Symbol LCD_D5_PIN = PORTA.1
 Symbol LCD_D6_PIN = PORTA.2
 Symbol LCD_D7_PIN = PORTA.3
-Symbol LCD_RS_PIN = PORTA.6        ' your screenshot shows PORTA.6
-Symbol LCD_E_PIN  = PORTA.7        ' and PORTA.7
+Symbol LCD_RS_PIN = PORTA.6
+Symbol LCD_E_PIN  = PORTA.7
 
+' RTC INT
+Symbol RTC_INT   = PORTB.0
 
-' RTC Interrupt
-Symbol RTC_INT = PORTB.0
-
-
-' Rotary Encoder Definitions
-Symbol _ENC_A = PORTB.1
-Symbol _ENC_B = PORTB.2
-Symbol _ENC_SW = PORTB.6
+' Rotary encoder + button
+Symbol _ENC_A    = PORTB.1
+Symbol _ENC_B    = PORTB.2
+Symbol _ENC_SW   = PORTB.6
 
 TRISA = %00010000
 TRISB = %01000111
 TRISC = %10000000
 
-'I2C Pins for DS3231
-Declare SDA_Pin PORTC.4                                                                                     '12C declares
+' I2C (DS3231M)
+Declare SDA_Pin PORTC.4
 Declare SCL_Pin PORTC.3
 Declare Slow_Bus On
- 
-'Setup USART 1 (Real World)
-Declare Hserial_Baud = 115200
-Declare Hserial_Clear = 1                        ' Enable Error clearing on received characters
-Declare HRSOut_Pin = PORTB.6
-Declare HRSIn_Pin = PORTB.7
 
+' USART
+Declare Hserial_Baud  = 115200
+Declare Hserial_Clear = 1
+Declare HRSOut_Pin    = PORTB.6
+Declare HRSIn_Pin     = PORTB.7
 
-'LCD Declares
-Declare LCD_Type = 0
-Declare LCD_DTPin = PORTA.0
-Declare LCD_ENPin = PORTA.7
-Declare LCD_RSPin = PORTA.6
+' LCD declares
+Declare LCD_Type      = 0
+Declare LCD_DTPin     = PORTA.0
+Declare LCD_ENPin     = PORTA.7
+Declare LCD_RSPin     = PORTA.6
 Declare LCD_Interface = 4
-Declare LCD_Lines = 4
+Declare LCD_Lines     = 4
 
-'Variables
-Dim W_EncoderPos As Word
-Dim B_LastState  As Byte
-Dim B_AState     As Byte
-Dim B_BState     As Byte
-Dim B_ButtonState As Byte
-Dim B_DebA       As Byte
-Dim B_DebB       As Byte
-Dim B_DebBtn     As Byte
-Dim B_General As Byte
-Dim B_Seconds As Byte           '
-Dim B_Minute As Byte            '
-Dim B_Hour As Byte              '
-Dim B_Day As Byte               '
-Dim B_Date As Byte              '
-Dim B_Month As Byte             '
-Dim B_Year As Byte              '
-Dim B_Ctrol As Byte
-Dim B_BeepLen As Byte
+' === Variables ================================================================
+' Encoder/button state
+Dim W_EncoderPos   As Word
+Dim B_LastState    As Byte
+Dim B_AState       As Byte
+Dim B_BState       As Byte
+Dim B_ButtonState  As Byte
+Dim B_DebA         As Byte
+Dim B_DebB         As Byte
+Dim B_DebBtn       As Byte
+Dim B_RE_Count     As Byte
+Dim B_BeepLen      As Byte
+Dim b_Long         As Bit
+Dim W_BtnHoldMS    As Word
+Dim S_Qacc         As SByte
+Dim b_ReInitLCD    As Bit
+Dim b_ReadRTC      As Bit
+Dim b_MTimeout     As Bit
+
+' Date/Time buffers
+Dim B_Seconds As Byte
+Dim B_Minute  As Byte
+Dim B_Hour    As Byte
+Dim B_Day     As Byte
+Dim B_Date    As Byte
+Dim B_Month   As Byte
+Dim B_Year    As Byte
+
+' EEPROM settings currently used in UI
+Dim B_Version       As Byte    ' kept for schema completeness (not directly used)
+Dim B_Log_Pos       As Byte    ' kept
+Dim B_Menu_Timeout  As Byte
+Dim B_Contrast      As Byte
+Dim B_PwrFailDelay  As Byte
+Dim B_System_Flags  As Byte    ' kept
+Dim B_HT            As Byte    ' kept
+Dim B_LFlo          As Byte    ' kept
+
+' Other stored parameters kept (future use)
+Dim W_In_1_Cnfg As Word
+Dim W_In_2_Cnfg As Word
+Dim W_In_3_Cnfg As Word
+
+' --- Analogue input scaling (signed) ---
+Dim S_In_1_Scale_4  As SWord
+Dim S_In_1_Scale_20 As SWord
+Dim S_In_2_Scale_4  As SWord
+Dim S_In_2_Scale_20 As SWord
+Dim S_In_3_Scale_4  As SWord
+Dim S_In_3_Scale_20 As SWord
+
+Dim W_HP        As Word
+Dim W_LP        As Word
+Dim W_HP_BP     As Word
+Dim W_PLP_BP    As Word
+Dim W_SLP_BP    As Word
+Dim W_HTBP      As Word
+Dim W_LFloBP    As Word
+
+Dim L_New_RunTime       As Long
+Dim L_Current_RunTime   As Long
+Dim L_Last_Run          As Long
+
+Dim L_TimeoutRemain     As Long
+Dim b_Escape            As Bit
 Dim b_Isolate As Bit
-Dim B_RE_Count As Byte
-Dim B_Selected As Byte
-
-'Variables for eeprom storage
-Dim B_Version As Byte                               'Which version are we on
-Dim B_Log_Pos As Byte                                'Last Used Log Position
-Dim B_Menu_Timeout As Byte                          'Timeout after x seconds
-Dim B_Contrast As Byte                              'set a contrast
-'Dim B_Relay_Pulse As Byte                           'How long to hold the pulse relay
-Dim B_PwrFailDelay As Byte
-Dim B_System_Flags As Byte                           'System Flag - set alias for each but
-Dim B_HT As Byte                                    'High Temp Limit (deg C)
-Dim B_LFlo As Byte                                  'Low Flow limit (%)  
-
-Dim W_Con_2_Cnfg As Word                            'Config Input 1 (Con 2)
-Dim W_Con_3_Cnfg As Word                            'Config Input 2 (Con 3)                            
-Dim W_Con_4_Cnfg As Word                            'Config Input 3 (Con 4)  
+Dim S_4_Min As SWord
+Dim S_20_Min As SWord
 
 
-Dim W_Con_2_4ma As Word                             'Configure Input 2
-Dim W_Con_2_20ma As Word
-Dim W_Con_3_4ma As Word
-Dim W_Con_3_20ma As Word
-Dim W_Con_4_4ma As Word
-Dim W_Con_4_20ma As Word
-Dim W_HP As Word
-Dim W_LP As Word
-Dim W_HP_BP As Word
-Dim W_PLP_BP As Word
-Dim W_SLP_BP As Word
-Dim W_HTBP As Word
-Dim W_LFloBP As Word
+' === Constants ================================================================
+Symbol LONG_PRESS     = 2000       ' ms
+Symbol Write_To_3231  = %11010000
+Symbol Read_From_3231 = %11010001
 
+' EEPROM map (byte/word/long etc.)
+Symbol EE_B_Version        = 0x00
+Symbol EE_B_Log_Pos        = 0x01
+Symbol EE_B_Menu_Timeout   = 0x02
+Symbol EE_B_Contrast       = 0x03
+Symbol EE_B_Relay_Pulse    = 0x04
+Symbol EE_B_System_Flags   = 0x05
+Symbol EE_B_HT             = 0x06
+Symbol EE_B_LFlo           = 0x07
+Symbol EE_B_PwrFailDelay   = 0x08
 
+Symbol EE_W_In_1_Cnfg      = 0x10
+Symbol EE_W_In_2_Cnfg      = 0x12
+Symbol EE_W_In_3_Cnfg      = 0x14
+Symbol EE_W_Con_2_4ma      = 0x16
+Symbol EE_W_Con_2_20ma     = 0x18
+Symbol EE_W_Con_3_4ma      = 0x1A
+Symbol EE_W_Con_3_20ma     = 0x1C
+Symbol EE_W_Con_4_4ma      = 0x1E
+Symbol EE_W_Con_4_20ma     = 0x20
+Symbol EE_W_HP             = 0x22
+Symbol EE_W_LP             = 0x24
+Symbol EE_W_HP_BP          = 0x26
+Symbol EE_W_PLP_BP         = 0x28
+Symbol EE_W_SLP_BP         = 0x2A
+Symbol EE_W_HTBP           = 0x2C
+Symbol EE_W_LFloBP         = 0x2E
+Symbol EE_W_RelayPulseSec  = 0x50
 
-Dim L_New_RunTime As Long
-Dim L_Current_RunTime As Long
-Dim L_Last_Run As Long
+Symbol EE_L_New_RunTime    = 0x30
+Symbol EE_L_Current_RunTime= 0x36
+Symbol EE_L_Last_Run       = 0x3C
 
-Dim SB_Current_temp As Byte
-Dim b_MTimeout As Bit
+Symbol EE_S_W_Con_2        = 0x42
+Symbol EE_S_W_Con_3        = 0x44
+Symbol EE_S_W_Con_4        = 0x46
+Symbol EE_S_W_Word_1       = 0x48
+Symbol EE_S_W_Word_2       = 0x4A
+Symbol EE_S_W_Word_3       = 0x4C
 
-'Dim W_TimeoutMS As Word
-Dim L_TimeoutRemain As Long
-Dim b_Long As Bit                       'long press flag
-Dim W_BtnHoldMS As Word                 ' counts how long RB6 (button) is held, in ms
-Dim S_Qacc As SByte                     ' -4..+4 is plenty; tracks partial steps
-Dim b_ReInitLCD As Bit
-Dim b_ReadRTC As Bit
-Dim b_Escape As Bit
+Symbol EE_NextFree         = 0x4E
+Symbol CURRENT_VERSION     = 1
 
-Clear                                   'Start clear
-
-
-
-' Constants
-
-Symbol LONG_PRESS = 2000  ' 2 seconds for long press (in ms)
-'Symbol B_WriteRCT = %11010000 'set the 1337 to receive data                                                'RTC address write
-Symbol ReadRTC = %11010001 'set the 1337 to transmit data                                            'RTC address read
-
-'––– 1. EEPROM offsets –––
-'––– EEPROM address map –––
-
-' 1. Byte-sized fields (1 byte each)  
-Symbol EE_B_Version        = 0x00  ' B_Version  
-Symbol EE_B_Log_Pos        = 0x01  ' B_Log_Pos  
-Symbol EE_B_Menu_Timeout   = 0x02  ' B_Menu_Timeout  
-Symbol EE_B_Contrast       = 0x03  ' B_Contrast  
-Symbol EE_B_Relay_Pulse    = 0x04  ' B_Relay_Pulse  
-Symbol EE_B_System_Flags   = 0x05  ' B_System_Flags  
-Symbol EE_B_HT             = 0x06  ' B_HT  
-Symbol EE_B_LFlo           = 0x07  ' B_LFlo  
-Symbol EE_B_PwrFailDelay   = 0x08  'pwr fail detect delay
-
-' 0x08–0x0F reserved for future byte fields  
-
-' 2. Word-sized fields (2 bytes each)  
-Symbol EE_W_Con_2_Cnfg     = 0x10  ' W_Con_2_Cnfg  
-Symbol EE_W_Con_3_Cnfg     = 0x12  ' W_Con_3_Cnfg  
-Symbol EE_W_Con_4_Cnfg     = 0x14  ' W_Con_4_Cnfg  
-
-Symbol EE_W_Con_2_4ma      = 0x16  ' W_Con_2_4ma  
-Symbol EE_W_Con_2_20ma     = 0x18  ' W_Con_2_20ma  
-Symbol EE_W_Con_3_4ma      = 0x1A  ' W_Con_3_4ma  
-Symbol EE_W_Con_3_20ma     = 0x1C  ' W_Con_3_20ma  
-Symbol EE_W_Con_4_4ma      = 0x1E  ' W_Con_4_4ma  
-Symbol EE_W_Con_4_20ma     = 0x20  ' W_Con_4_20ma  
-
-Symbol EE_W_HP             = 0x22  ' W_HP  
-Symbol EE_W_LP             = 0x24  ' W_LP  
-Symbol EE_W_HP_BP          = 0x26  ' W_HP_BP  
-Symbol EE_W_PLP_BP         = 0x28  ' W_PLP_BP  
-Symbol EE_W_SLP_BP         = 0x2A  ' W_SLP_BP  
-Symbol EE_W_HTBP           = 0x2C  ' W_HTBP  
-Symbol EE_W_LFloBP         = 0x2E  ' W_LFloBP  
-Symbol EE_W_RelayPulseSec = 0x50     ' uses 0x50–0x51
-
-' 0x30–0x35 reserved for future word fields  
-
-' 3. Long-sized fields (6 bytes each)  
-Symbol EE_L_New_RunTime    = 0x30  ' L_New_RunTime (6 bytes: 0x30–0x35)  
-Symbol EE_L_Current_RunTime= 0x36  ' L_Current_RunTime (6 bytes: 0x36–0x3B)  
-Symbol EE_L_Last_Run       = 0x3C  ' L_Last_Run (6 bytes: 0x3C–0x41)  
-
-' 4. Signed-word fields (2 bytes each)  
-Symbol EE_S_W_Con_2        = 0x42  ' S_W_Con_2  
-Symbol EE_S_W_Con_3        = 0x44  ' S_W_Con_3  
-Symbol EE_S_W_Con_4        = 0x46  ' S_W_Con_4  
-Symbol EE_S_W_Word_1       = 0x48  ' S_W_Word_1  
-Symbol EE_S_W_Word_2       = 0x4A  ' S_W_Word_2  
-Symbol EE_S_W_Word_3       = 0x4C  ' S_W_Word_3  
-
-' 0x4E–0x4F reserved for future signed-word fields  
-
-' 5. Next free address  
-Symbol EE_NextFree         = 0x4E  
-
-' Schema version  
-Symbol CURRENT_VERSION     = 1  
-
-'Real Time Clock 
-Symbol Write_To_3231 = %11010000 'set the 1337 to receive data                                                'RTC address write
-Symbol Read_From_3231 = %11010001 'set the 1337 to transmit data                                            'RTC address read
+' Blink period for P_Scale (in loop ticks, loop delays ~15ms each)
+Symbol SCALE_BLINK_TICKS = 33   ' ~33 * 15ms ˜ 495ms (about 2 Hz)
 
 
 
 
+' === Timer0 1ms tick @32MHz ===================================================
+T0CONbits_T0PS2 = 1
+T0CONbits_T0PS1 = 0
+T0CONbits_T0PS0 = 0
+T0CONbits_PSA   = 0
+T0CONbits_T0CS  = 0
+T0CONbits_T08BIT= 1
+TMR0L           = 6
 
-
-
-' Timer0 init for 1 ms tick @ 32 MHz (Fosc), 1:32 prescaler
-T0CONbits_T0PS2 = 1       ' 1
-T0CONbits_T0PS1 = 0       ' 0  -> 1:32
-T0CONbits_T0PS0 = 0       ' 0
-T0CONbits_PSA   = 0       ' prescaler assigned
-T0CONbits_T0CS  = 0       ' internal clock
-T0CONbits_T08BIT= 1       ' 8-bit mode
-TMR0L = 6                 ' preload for 1 ms
-
-'--------------------------------------------
-' Interrupt setup
+' === Interrupt setup ==========================================================
 On_Hardware_Interrupt GoTo ISR_Handler
-INTCONbits_T0IF = 0        ' clear flag
-INTCONbits_T0IE = 1        ' enable Timer0 interrupt
-INTCONbits_GIE = 1         ' global enable
-T0CONbits_TMR0ON = 1       ' start timer
+INTCONbits_T0IF = 0
+INTCONbits_T0IE = 1
+INTCONbits_GIE  = 1
+T0CONbits_TMR0ON= 1
 
-' --- INT0 (RB0) 1 Hz tick from DS3231M SQW ------------------------------
-TRISB.0 = 1                                 ' RB0 as input
-INTCON2bits_INTEDG0 = 1                     ' start on rising edge
-INTCONbits_INT0IF   = 0                     ' clear flag
-INTCONbits_INT0IE   = 1                     ' enable INT0
-' (You already have INTCONbits_GIE = 1 elsewhere)
+' INT0 from DS3231M 1Hz
+TRISB.0                 = 1
+INTCON2bits_INTEDG0     = 1
+INTCONbits_INT0IF       = 0
+INTCONbits_INT0IE       = 1
 
-
-
-
-; Interrupt Handler
-
+' === ISR ======================================================================
 GoTo over_Interrupt
 ISR_Handler:
     Context Save
@@ -432,337 +452,292 @@ ISR_Handler:
 
 
     Context Restore
-
 over_Interrupt:
 
-
-'startup delay to settle
+' === Boot =====================================================================
 DelayMS 500
-
-'P_WriteTime()
 P_Startup()
 DelayMS 100
 P_RTC_Gettime()
 HRSOut Dec2 B_Date,"/",Dec2 B_Month,"/",Dec2 B_Year,"  ",Dec2 B_Hour,":",Dec2 B_Minute,":",Dec2 B_Seconds,13
 
-
-
-
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-'
-'           EEPROM READS
-'
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-' EEPROM read wrappers using built-in Eread
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-' Read one byte (8-bit)
+' === EEPROM helpers ===========================================================
 Proc EEPROM_ReadByte(addr As Byte), Byte
     Result = ERead addr
 EndProc
-
-' Read one word (16-bit)
 Proc EEPROM_ReadWord(addr As Byte), Word
     Result = ERead addr
 EndProc
-
-' Read one long (24-bit)
 Proc EEPROM_ReadLong(addr As Byte), Long
     Result = ERead addr
 EndProc
-
-' Read one double (32-bit)
 Proc EEPROM_ReadDouble(addr As Byte), Double
     Result = ERead addr
 EndProc
 
-' Read one signed word (16)
-Proc EEPROM_ReadSWord(addr As Byte), Integer
+Proc EEPROM_ReadSWord(addr As Byte), SWord
     Dim raw As Word
-    raw    = ERead addr             ' read 16-bit unsigned
-    If raw And &H8000 Then          ' if sign bit set
-        Result = raw - &H10000      ' convert to negative
+    raw = ERead addr
+    If (raw & $8000) <> 0 Then          ' MSB set? -> negative
+        Result = raw - $10000           ' 65536; maps 0x8000..0xFFFF to -32768..-1
     Else
-        Result = raw                ' positive as-is
+        Result = raw                    ' 0..32767
     EndIf
 EndProc
 
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-' EEPROM write wrappers using built-in Ewrite
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 
-' Write one byte (8-bit)
 Proc EEPROM_WriteByte(addr As Byte, value As Byte)
     EWrite addr, [value]
 EndProc
-
-' Write one word (16-bit)
 Proc EEPROM_WriteWord(addr As Byte, value As Word)
     EWrite addr, [value]
 EndProc
-
-' Write one long (24-bit)
 Proc EEPROM_WriteLong(addr As Byte, value As Long)
     EWrite addr, [value]
 EndProc
-
-' Write one double (32-bit)
 Proc EEPROM_WriteDouble(addr As Byte, value As Double)
     EWrite addr, [value]
 EndProc
 
-' Write a signed 16-bit value (two’s-complement) to EEPROM at “addr”
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-Proc EEPROM_WriteSWord(addr As Byte, value As Word)
+' Write a signed 16-bit (two’s-complement) to EEPROM
+Proc EEPROM_WriteSWord(addr As Byte, value As SWord)
     Dim raw As Word
     If value < 0 Then
-        raw = value + 0x10000       ' map negative to two’s-complement
+        raw = value + $10000
     Else
         raw = value
     EndIf
-    EWrite addr, [raw]              ' write 16-bit word
+    EWrite addr, [raw]
+EndProc
+'------------------------------------------------------------
+' Only write if different (reduces wear)
+Proc EEPROM_Wrt_SWordIC(addr As Byte, value As SWord)
+    Dim cur As SWord
+    cur = EEPROM_ReadSWord(addr)
+    If cur <> value Then
+        EEPROM_WriteSWord(addr, value)
+    EndIf
 EndProc
 
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-' Main Program
-Main:
-Cls                   ' Clear the LCD using the cls command
-DelayMS 10
-'––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-P_InitEEPROM()                                              'check the eeprom
-P_LoadFromEEPROM()
-P_LCD_SafeInit()                                            'initialize the LCD
+'------------------------------------------------------------
+' Map B_Type -> units string (max 5 chars)
 
-'Setup the RTC to give a 1Hz IRQ
+' === Main =====================================================================
+Main:
+Cls
+DelayMS 10
+
+P_InitEEPROM()
+P_LoadFromEEPROM()
+P_LCD_SafeInit()
 DS3231M_Enable1HzSQW()
 
 HRSOut "Startup",13
 P_LCD(1,6,"IRRISYS")
 P_LCD(2,1,"FW Ver 1.0")
-
-
 DelayMS 1000
 Cls
 
-'Main screen
-'write the current time as 0's
-'P_WriteTime()
-Idle_Screen:          'Main display
-
-'for b_general = 0 to 10
-'    hrsout p_title(b_general),13
-'next b_general
-
-
-P_RTC_Gettime()            'get the time (should be in global vars)
-'hrsout "Current time ="
-
 Dim B_Option As Byte
-Dim B_Result As Byte
-Dim L_Result As Long
-Dim L_Mask As Long
 
-
-DelayMS 100
-'This is going to form the basis for the main display
+' Idle screen loop
 MAIN_SCREEN:
 While 1 = 1
-    If b_ReInitLCD = 1 Then
-        Clear b_ReInitLCD                                                       'this flag is set in the isar on a long press
-        P_LCD_SafeInit()                                                        're initialize the LCD
-    EndIf
-    If b_ReadRTC = 1 Then P_RTC_Gettime()                                       'routine clock read
-    Print At 1,1,"Static ", Dec2 B_Hour, ":", Dec2 B_Minute, ":", Dec2 B_Seconds, "  "
-    'P_LCD(1,1,"Static     "+Str$(Dec2 B_Hour)+":"+Str$(Dec2 B_Minute)+":"+Str$(Dec2 B_Second))
-    P_LCD(2,1,"000psi     No Flow")
-    P_LCD(3,1,"Note - on this line")    
-    P_LCD(4,1,"READY") 
+    If b_ReInitLCD = 1 Then Clear b_ReInitLCD : P_LCD_SafeInit()
+    If b_ReadRTC = 1 Then P_RTC_Gettime()
 
-    'User Interaction
+    Print At 1,1,"Static ", Dec2 B_Hour, ":", Dec2 B_Minute, ":", Dec2 B_Seconds, "  "
+    P_LCD(2,1,"000psi     No Flow")
+    P_LCD(3,1,"Note - on this line")
+    P_LCD(4,1,"READY")
+
+    ' open top menu on short press; long-press re-inits LCD and stays here
     If B_ButtonState = 0 Then
-        DelayMS 30                               ' small debounce
+        DelayMS 30
         While B_ButtonState = 0
-            If b_Long = 1 Then                   ' LONG on main screen
-                Clear b_Long
-                b_ReInitLCD = 1                  ' will be serviced in the loop
-                GoTo MAIN_SCREEN                 ' do not open menu
-            EndIf
+            If b_Long = 1 Then Clear b_Long : b_ReInitLCD = 1 : GoTo MAIN_SCREEN
             DelayMS 10
         Wend
-    
-        ' SHORT press: beep and open menu
+
         P_Beep(2)
         Clear b_MTimeout : Clear b_Long
-        L_Mask   = P_BuildMask10(1,2,3,20,0,0,0,0,0,0)
-        B_Option = P_Menu("OPTIONS", L_Mask)
-    
-        ' Back/timeout/long ? 0 (see section 2)
-        If B_Option = 0 Then
-            Cls
-            GoTo MAIN_SCREEN
-        EndIf
-        
-        If B_Option = 20 Then
-            Cls
-            GoTo MAIN_SCREEN
-        EndIf
-    
+
+        ' New: list-based menu (IDs in any order; 0 = unused)
+        ' Include BACK (20) here so user can exit via short press as well.
+        B_Option = P_MenuList8("OPTIONS", 1,2,3,20, 0,0,0,0)
+
+        If B_Option = 0 Or B_Option = 20 Then Cls : GoTo MAIN_SCREEN
         GoSub Menus
     EndIf
-
-'RTC Test
-
-
 Wend
 End
-'
-'--------------------------------------------
-'        Sub Routines HERE
-'--------------------------------------------
-Menus:          'Main menu system
 
+' === Menus ====================================================================
+Menus:
     P_Debounce()
-    Select B_Option             'This is the options menu
-        Case 1                  'Main Menu
-            'Main Menu will include the following fields
-            'Title, Time, Pressure, Temperature, Flow (if enabled),back
-            'B_Result=P_Menu("Main Menu",)
+    Select B_Option
 
-'--------------------------------------------
+        Case 1     ' Main Menu (placeholder)
+            ' Add items as needed with P_MenuList8(...)
 
-
-        Case 2                  'Utility Menu
-            ' Utility menu
+        Case 2     ' Utility Menu
             Utility_Menu:
-            L_Mask   = P_BuildMask10(4,5,6,20,0,0,0,0,0,0)
-            B_Option = P_Menu("UTILITY MENU", L_Mask)
-            'If (B_Option = 0) Or (B_Option = 20) Then GoTo EXIT_Menus
-            ' Back / timeout / long? -> return to main
+            B_Option = P_MenuList8("UTILITY MENU", 4,5,6,20,0,0,0,0)
             If B_Option = 0 Or B_Option = 20 Then
                 Cls
                 GoTo EXIT_Menus
             EndIf
-
-            ' Otherwise handle the selection
-            'GoSub Menus
-
-             
+            
             Select B_Option
                 Case 4
-                P_SetDateTime()
-                If b_Escape = 1 Then
-                    Clear b_Escape
-                    Cls
-                    GoTo EXIT_Menus      ' unwind all the way to main
-                EndIf
-                GoTo Utility_Menu        ' only loop back if the edit was committed
-            Case 5
-            Case 6
-EndSelect
-
-
-'--------------------------------------------
-
-
-        Case 3                  'Setup Menu
-            'setup menu includes Setup Input1..3, 
-            SetUp_Menu:                                                   'cycle back to here until timeout or BACK selected (long press exits)
-            L_Mask   = P_BuildMask10(0,7,8,9,10,11,12,13,14,20)
-            B_Option=P_Menu("SETUP MENU",L_Mask)
-            If P_TimedOut() = 1 Or B_Option = 20 Then
-                GoTo EXIT_Menus               'Menu Timeout/ Back selected             
-                P_P_Timeout()                   'Menu exit beeps
-            EndIf
-            'Now handle the other items selected
-            Select B_Option
-
-        Case 7                  ' Menu Timeout
-            P_MenuTimeout()
-            GoTo SetUp_Menu
-                    
-        Case 8                  'Contrast
-            P_SetContrast()
-            GoTo SetUp_Menu
-
-        Case 9                  ' Pwr Fail Dly
-            P_SetPwrDelay()
-            GoTo SetUp_Menu
-
-                Case 10                 'Input 1
-                Case 11                 'Input 2
-                Case 12                 'Input 3
-                Case 13                 'End Runtime
-        Case 14                         'Relay Pulse
-            P_SetPulse()
-            GoTo SetUp_Menu
-            
-
+                    P_SetDateTime()
+                    If b_Escape = 1 Then Clear b_Escape : Cls : GoTo EXIT_Menus
+                    GoTo Utility_Menu
+                Case 5
+                    ' View Log (TBD)
+                Case 6
+                    ' Clear Log (TBD)
             EndSelect
 
-'--------------------------------------------
-        Case 5                  'View Log
-        Case 6                  'Clear Log
+        Case 3     ' Setup Menu (8 items fit exactly; use long-press/timeout to exit)
+            Setup_Menu:
+            B_Option = P_MenuList8("SETUP MENU", 7,8,9,10,11,12,13,14)
+            If B_Option = 0 Then Cls : GoTo EXIT_Menus
+
+            Select B_Option
+                Case 7                                  'MENU TIMEOUT
+                    P_MenuTimeout()
+                    GoTo Setup_Menu
+                Case 8
+                    P_SetContrast()                     'CONTRAST
+                    GoTo Setup_Menu
+                Case 9
+                    P_SetPwrDelay()                     'PWR FAIL TEST TIME
+                    GoTo Setup_Menu
+                Case 10                                 'SETUP INPUT 1
+                    'Decide on the type
+                    B_Option = P_MenuList8("Input 1",21, 16, 17, 18,20,0,0,0)                   'Dig, Pressure, temp, flow
+                    Select B_Option                                                             'set the config register     
+                        'DIGITAL setup
+                         Clear W_In_1_Cnfg                                                      'start from scratch
+                         Case 21                                                                'digital
+                            'clear S0/S1 for digital input
+                             ClearBit W_In_1_Cnfg,0
+                             ClearBit W_In_1_Cnfg,1                                              'set the digital                                                        
+                             B_Option = P_MenuList8("Input 1 Digital",22,23,27,0,0,0,0,0)        'if digital - fail high or fail low  
+                             Select B_Option
+                                Case 22                                                         'fail high
+                                    'set DF1
+                                    'clear DF0  for Fail high                                                                        
+                                    SetBit W_In_1_Cnfg,5
+                                    ClearBit W_In_1_Cnfg,6                                   
+                                Case 23                                                         'fail low
+                                    'clear DF1
+                                    'Set DF0 for fail low
+                                    ClearBit W_In_1_Cnfg,6
+                                    SetBit W_In_1_Cnfg,6
+                                Case 27                                                         'not used                                 
+                                    'clear DF1/DF0 if not used
+                                    ClearBit W_In_1_Cnfg,5
+                                    ClearBit W_In_1_Cnfg,6
+                                Case Else
+                                    GoTo EXIT_Menus
+                            EndSelect                            
+                            B_Option = P_MenuList8("Input 1 Digital",24,25,28,0,0,0,0,0)                'Fault Action                            
+                            Select B_Option
+                                Case 24                                                         'Pulse
+                                    'set FAH0
+                                    'clear FAH1 for PULSE
+                                    SetBit W_In_1_Cnfg,07
+                                    ClearBit W_In_1_Cnfg,08                                                                                                           
+                                Case 25                                                         'Latch
+                                    'clear FAH0
+                                    'set FAH1 for Latch
+                                    SetBit W_In_1_Cnfg,08
+                                    ClearBit W_In_1_Cnfg,07    
+                                Case 28                                                         'No Action
+                                    'cleaf FAH0
+                                    'clear FAH1 for NOT USED                                    
+                                    ClearBit W_In_1_Cnfg,07
+                                    ClearBit W_In_1_Cnfg,08                                    
+                                Case Else
+                            EndSelect
+                            'END DIGITAL SETUP FOR NOW                            
+
+                        Case 16     'SETUP PRESSURE
+                            'steps are - set scale, set output for fail high, primary low and secondary lo
+                            'set scale 
+                            P_Scale(0,1)                                        'values are set in the procedure
+                            'set relay behaviour
+                            HRSOut "Call P_Output()",13
+                            P_Output("Pressure Output",0,1)                     'call with type (pressure) and input (1) in this case                                                                                     
+                            
+                        Case 17     'SETUP TEMPERATURE
+                            'B_Option
 
 
-        Case 15                 'Runtime
-        Case 16                 'Pressure
-        Case 17                 'Temperature
-        Case 18                 'Flow
-        Case 19                 'Vacuum
-        Case 20                 'BACK
+
+                        Case 18     'SETUP FLOW
+
+                        Case Else                                                               'escape
+                        GoTo EXIT_Menus
+                        
+                    EndSelect
 
 
-    EndSelect 
+                Case 11                 'SETUP INPUT 2
+ 
+                Case 12                 'SETUP INPUT 3
+
+                Case 13                 ' End Runtime (TBD)
+
+                Case 14
+                    P_SetPulse()
+                    GoTo Setup_Menu
+            EndSelect
+
+
+        Case 5,6,15,16,17,18,19
+            ' Implement as needed                
+
+        Case 20  ' BACK
+            ' handled by caller
+
+    EndSelect
 
     DelayMS 100
-    EXIT_Menus: 
+EXIT_Menus:
     Cls
-    Clear b_MTimeout                                                                    'make sure the timeout flag is cleared
-    P_Debounce()                                                                        'another debounce
+    Clear b_MTimeout
+    P_Debounce()
 Return
-'--------------------------------------------
 
-
-
-
-
-
-
-
-'--------------------------------------------
-'        PROCEDURES HERE
-'––– 1. Load settings from EEPROM –––
-'--------------------------------------------
-
-
-
-
+' === Settings I/O =============================================================
 Proc P_LoadFromEEPROM()
     Dim storedVer As Byte
-    storedVer = EEPROM_ReadByte(EE_B_Version)      ' <- was EEPROM_Read
+    storedVer = EEPROM_ReadByte(EE_B_Version)
 
     If storedVer = CURRENT_VERSION Then
-        ' Byte fields
         B_Log_Pos       = EEPROM_ReadByte(EE_B_Log_Pos)
         B_Menu_Timeout  = EEPROM_ReadByte(EE_B_Menu_Timeout)
         B_Contrast      = EEPROM_ReadByte(EE_B_Contrast)
-        'B_Relay_Pulse   = EEPROM_ReadByte(EE_B_Relay_Pulse)
         B_System_Flags  = EEPROM_ReadByte(EE_B_System_Flags)
         B_HT            = EEPROM_ReadByte(EE_B_HT)
         B_LFlo          = EEPROM_ReadByte(EE_B_LFlo)
-        B_PwrFailDelay = EEPROM_ReadByte(EE_B_PwrFailDelay)
-        B_PwrFailDelay = EEPROM_ReadByte(EE_B_PwrFailDelay)
+        B_PwrFailDelay  = EEPROM_ReadByte(EE_B_PwrFailDelay)
 
-        ' Word fields
-        W_Con_2_Cnfg    = EEPROM_ReadWord(EE_W_Con_2_Cnfg)
-        W_Con_3_Cnfg    = EEPROM_ReadWord(EE_W_Con_3_Cnfg)
-        W_Con_4_Cnfg    = EEPROM_ReadWord(EE_W_Con_4_Cnfg)
+        W_In_1_Cnfg    = EEPROM_ReadWord(EE_W_In_1_Cnfg)
+        W_In_2_Cnfg    = EEPROM_ReadWord(EE_W_In_2_Cnfg)
+        W_In_3_Cnfg    = EEPROM_ReadWord(EE_W_In_3_Cnfg)
 
-        W_Con_2_4ma     = EEPROM_ReadWord(EE_W_Con_2_4ma)
-        W_Con_2_20ma    = EEPROM_ReadWord(EE_W_Con_2_20ma)
-        W_Con_3_4ma     = EEPROM_ReadWord(EE_W_Con_3_4ma)
-        W_Con_3_20ma    = EEPROM_ReadWord(EE_W_Con_3_20ma)
-        W_Con_4_4ma     = EEPROM_ReadWord(EE_W_Con_4_4ma)
-        W_Con_4_20ma    = EEPROM_ReadWord(EE_W_Con_4_20ma)
+        ' --- Analogue scaling (signed), reuse existing addresses ---
+        S_In_1_Scale_4  = EEPROM_ReadSWord(EE_W_Con_2_4ma)
+        S_In_1_Scale_20 = EEPROM_ReadSWord(EE_W_Con_2_20ma)
+        S_In_2_Scale_4  = EEPROM_ReadSWord(EE_W_Con_3_4ma)
+        S_In_2_Scale_20 = EEPROM_ReadSWord(EE_W_Con_3_20ma)
+        S_In_3_Scale_4  = EEPROM_ReadSWord(EE_W_Con_4_4ma)
+        S_In_3_Scale_20 = EEPROM_ReadSWord(EE_W_Con_4_20ma)
+
 
         W_HP            = EEPROM_ReadWord(EE_W_HP)
         W_LP            = EEPROM_ReadWord(EE_W_LP)
@@ -772,118 +747,43 @@ Proc P_LoadFromEEPROM()
         W_HTBP          = EEPROM_ReadWord(EE_W_HTBP)
         W_LFloBP        = EEPROM_ReadWord(EE_W_LFloBP)
 
-        ' Long fields
-        L_New_RunTime      = EEPROM_ReadLong(EE_L_New_RunTime)
-        L_Current_RunTime  = EEPROM_ReadLong(EE_L_Current_RunTime)
-        L_Last_Run         = EEPROM_ReadLong(EE_L_Last_Run)
+        L_New_RunTime     = EEPROM_ReadLong(EE_L_New_RunTime)
+        L_Current_RunTime = EEPROM_ReadLong(EE_L_Current_RunTime)
+        L_Last_Run        = EEPROM_ReadLong(EE_L_Last_Run)
 
-        ' sanity clamp for safety (avoid 0 meaning “instant timeout”)
         If B_Menu_Timeout = 0 Then B_Menu_Timeout = 120
-
     Else
-        ' first run or schema change: initialize defaults
         P_InitEEPROM()
-        ' then load them
         B_Menu_Timeout = 120
     EndIf
 EndProc
-'--------------------------------------------
 
-
-'––– 2. Save settings to EEPROM –––
-Proc SaveSettingsToEEPROM()
-    ' stamp version
-    EEPROM_WriteIfChanged EE_B_Version, CURRENT_VERSION
-
-    ' Byte fields
-    EEPROM_WriteIfChanged EE_B_Log_Pos,      B_Log_Pos
-    EEPROM_WriteIfChanged EE_B_Menu_Timeout, B_Menu_Timeout
-    EEPROM_WriteIfChanged EE_B_Contrast,     B_Contrast
-    EEPROM_WriteIfChanged EE_B_Relay_Pulse,  B_Relay_Pulse
-    EEPROM_WriteIfChanged EE_B_System_Flags, B_System_Flags
-    EEPROM_WriteIfChanged EE_B_HT,           B_HT
-    EEPROM_WriteIfChanged EE_B_LFlo,         B_LFlo
-
-    ' Word fields
-    EEPROM_WriteWordIfChanged EE_W_Con_2_Cnfg,   W_Con_2_Cnfg
-    EEPROM_WriteWordIfChanged EE_W_Con_3_Cnfg,   W_Con_3_Cnfg
-    EEPROM_WriteWordIfChanged EE_W_Con_4_Cnfg,   W_Con_4_Cnfg
-
-    EEPROM_WriteWordIfChanged EE_W_Con_2_4ma,    W_Con_2_4ma
-    EEPROM_WriteWordIfChanged EE_W_Con_2_20ma,   W_Con_2_20ma
-    EEPROM_WriteWordIfChanged EE_W_Con_3_4ma,    W_Con_3_4ma
-    EEPROM_WriteWordIfChanged EE_W_Con_3_20ma,   W_Con_3_20ma
-    EEPROM_WriteWordIfChanged EE_W_Con_4_4ma,    W_Con_4_4ma
-    EEPROM_WriteWordIfChanged EE_W_Con_4_20ma,   W_Con_4_20ma
-
-    EEPROM_WriteWordIfChanged EE_W_HP,           W_HP
-    EEPROM_WriteWordIfChanged EE_W_LP,           W_LP
-    EEPROM_WriteWordIfChanged EE_W_HP_BP,        W_HP_BP
-    EEPROM_WriteWordIfChanged EE_W_PLP_BP,       W_PLP_BP
-    EEPROM_WriteWordIfChanged EE_W_SLP_BP,       W_SLP_BP
-    EEPROM_WriteWordIfChanged EE_W_HTBP,         W_HTBP
-    EEPROM_WriteWordIfChanged EE_W_LFloBP,       W_LFloBP
-
-    ' Long fields
-    EEPROM_WriteLongIfChanged EE_L_New_RunTime,     L_New_RunTime
-    EEPROM_WriteLongIfChanged EE_L_Current_RunTime, L_Current_RunTime
-    EEPROM_WriteLongIfChanged EE_L_Last_Run,        L_Last_Run
-EndProc
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'--------------------------------------------
 Proc P_InitEEPROM()
     Dim storedVer As Byte
-
-    '-- Read schema version --
     storedVer = EEPROM_ReadByte(EE_B_Version)
 
     If storedVer <> CURRENT_VERSION Then
-        '--- Byte defaults ---
         EEPROM_WriteByte(EE_B_Version,      0)
         EEPROM_WriteByte(EE_B_Log_Pos,      0)
         EEPROM_WriteByte(EE_B_Menu_Timeout, 120)
         EEPROM_WriteByte(EE_B_Contrast,     127)
-        'EEPROM_WriteByte(EE_B_Relay_Pulse,  5)
         EEPROM_WriteByte(EE_B_System_Flags, 0)
         EEPROM_WriteByte(EE_B_HT,           40)
         EEPROM_WriteByte(EE_B_LFlo,         25)
-        EEPROM_WriteByte(EE_B_PwrFailDelay, 5)   ' default 0 s
+        EEPROM_WriteByte(EE_B_PwrFailDelay, 5)
 
-        '--- Word defaults (16-bit) ---
-        EEPROM_WriteWord(EE_W_Con_2_Cnfg,   444)
-        EEPROM_WriteWord(EE_W_Con_3_Cnfg,  1293)
-        EEPROM_WriteWord(EE_W_Con_4_Cnfg,  1026)
-        EEPROM_WriteWord(EE_W_Con_2_4ma,     0)
-        EEPROM_WriteWord(EE_W_Con_2_20ma,  360)
-        EEPROM_WriteWord(EE_W_Con_3_4ma,     0)
-        EEPROM_WriteWord(EE_W_Con_3_20ma,  100)
-        EEPROM_WriteWord(EE_W_Con_4_4ma,     0)
-        EEPROM_WriteWord(EE_W_Con_4_20ma,  100)
+        EEPROM_WriteWord(EE_W_In_1_Cnfg,       444)
+        EEPROM_WriteWord(EE_W_In_2_Cnfg,       1293)
+        EEPROM_WriteWord(EE_W_In_3_Cnfg,       1026)
+        
+        ' Signed defaults (reuse same addresses)
+        EEPROM_WriteSWord(EE_W_Con_2_4ma,     0)
+        EEPROM_WriteSWord(EE_W_Con_2_20ma,  360)
+        EEPROM_WriteSWord(EE_W_Con_3_4ma,     0)
+        EEPROM_WriteSWord(EE_W_Con_3_20ma,  100)
+        EEPROM_WriteSWord(EE_W_Con_4_4ma,     0)
+        EEPROM_WriteSWord(EE_W_Con_4_20ma,  100)
+
         EEPROM_WriteWord(EE_W_HP,          300)
         EEPROM_WriteWord(EE_W_LP,           30)
         EEPROM_WriteWord(EE_W_HP_BP,        0)
@@ -891,14 +791,12 @@ Proc P_InitEEPROM()
         EEPROM_WriteWord(EE_W_SLP_BP,      60)
         EEPROM_WriteWord(EE_W_HTBP,        60)
         EEPROM_WriteWord(EE_W_LFloBP,      60)
-        EEPROM_WriteWord(EE_W_RelayPulseSec, 5)   ' 5 seconds default
+        EEPROM_WriteWord(EE_W_RelayPulseSec, 5)
 
-        '--- 32-bit defaults (Double) ---
         EEPROM_WriteDouble(EE_L_New_RunTime,     0)
         EEPROM_WriteDouble(EE_L_Current_RunTime, 0)
         EEPROM_WriteDouble(EE_L_Last_Run,        0)
 
-        '--- Signed-word defaults (16-bit two’s-complement) ---
         EEPROM_WriteSWord(EE_S_W_Con_2, 0)
         EEPROM_WriteSWord(EE_S_W_Con_3, 0)
         EEPROM_WriteSWord(EE_S_W_Con_4, 0)
@@ -906,395 +804,114 @@ Proc P_InitEEPROM()
         EEPROM_WriteSWord(EE_S_W_Word_2,  0)
         EEPROM_WriteSWord(EE_S_W_Word_3,  0)
 
-        '--- IMPORTANT: mark schema as updated LAST ---
         EEPROM_WriteByte(EE_B_Version, CURRENT_VERSION)
-
-
-    End If
+    EndIf
 EndProc
 
-
-
-'--------------------------------------------
+' === UI helpers ===============================================================
 Proc P_LCD(B_Ln As Byte, B_Pos As Byte, S_Data As String * 20)
-    ' print data at the line and pos given
     Print At B_ln, B_pos, S_data
 EndProc
-'--------------------------------------------
-' Procedure: SetDateTime
-' Uses rotary encoder on RB1/RB2 and button on RB6 to set
-'   DD/MM/YY and HH:MM:SS on a DS3231M RTC
 
-' Procedure: SetDateTime
-' Uses RE + button to set DD/MM/YY and HH:MM:SS on DS3231M RTC
-Proc P_SetDateTime()
-    Cls
-    P_Beep(3)
-    P_Debounce()
-
-    Clear b_Escape
-
-
-Retry:
-    Dim W_LastPos As Word
-    Dim B_Date0   As Byte, B_Month0 As Byte, B_Year0   As Byte
-    Dim B_Hour0   As Byte, B_Minute0 As Byte, B_Sec0   As Byte
-
-    DelayMS 200
-    HRSOut "P_SetDateTime()",13
-    P_LCD(1,1,"SET DATE AND TIME")
-
-    ' Read current RTC and snapshot
-    P_RTC_Gettime()
-    B_Date0   = B_Date
-    B_Month0  = B_Month
-    B_Year0   = B_Year
-    B_Hour0   = B_Hour
-    B_Minute0 = B_Minute
-    B_Sec0    = B_Seconds
-
-    HRSOut "Rx from RTC ",Dec2 B_Date0,"/",Dec2 B_Month0,"/",Dec2 B_Year0,"  ",Dec2 B_Hour0,":",Dec2 B_Minute0,":",Dec2 B_Year0,13
-
-
-    ' Header line for editing
-    P_LCD(3,1, Str$(Dec2 B_Date) + "/MM/YY HH:MM:SS")
-
-    ' ---- Date ----
-    B_Date = P_SetField(3,1,2,B_Date,1,31,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,1, Str$(Dec2 B_Date) + "/" + Str$(Dec2 B_Month))
-
-    ' ---- Month ----
-    B_Month = P_SetField(3,4,2,B_Month,1,12,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,4, Str$(Dec2 B_Month))
-
-    ' ---- Year ----
-    B_Year = P_SetField(3,7,2,B_Year,25,99,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,7, Str$(Dec2 B_Year))
-
-    ' ---- Hour ----
-    B_Hour = P_SetField(3,10,2,B_Hour,0,23,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,10, Str$(Dec2 B_Hour))
-
-    ' ---- Minute ----
-    B_Minute = P_SetField(3,13,2,B_Minute,0,59,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,13, Str$(Dec2 B_Minute))
-
-    ' ---- Second ----
-    B_Seconds = P_SetField(3,16,2,B_Seconds,0,59,W_LastPos)
-    If b_Long = 1 Then GoTo Abort_NoCommit
-    P_LCD(3,16, Str$(Dec2 B_Seconds))
-
-'    ' Confirm? (OK/Retry UI)
-'    If P_Ok(W_LastPos) = 0 Then
-'        P_Retry()
-'        HRSOut "Retry",13
-'        Cls
-'        DelayMS 250
-'        GoTo Retry
-'    EndIf
-
-    ' Commit to RTC
-    P_RTC_Settime()
-    GoTo Exit_P_SetDateTime
-
-Abort_NoCommit:
-    ' Long-press escape: restore originals and do NOT write
-    B_Date   = B_Date0
-    B_Month  = B_Month0
-    B_Year   = B_Year0
-    B_Hour   = B_Hour0
-    B_Minute = B_Minute0
-    B_Seconds= B_Sec0
-    b_Escape = 1                  ' tell caller to unwind to main
-    ' restore fields...
-
-    ' Long beep already handled by ISR (B_BeepLen=500 when b_Long set)
-    ' Just fall through to exit
-
-Exit_P_SetDateTime:
-    Clear b_Long
-    Cls
-EndProc
-
-'--------------------------------------------
-' Helper procedure: adjust a value with the rotary encoder
-' Helper: adjust a value with RE; returns original value on LONG press (no commit)
-Proc P_SetField(B_Ln As Byte, B_col As Byte, B_Zero As Byte,B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word), Word
-
-    Dim B_Orig As Byte
-    Dim B_Changed As Byte
-
-    P_Debounce()
-    B_Orig    = B_Value
-    B_Changed = 1
-
-    W_EncoderPos = W_LastPos
-    HRSOut "Input B_Value = ",Dec3 B_Value,13
-    While 1 = 1
-        '--- encoder up ---
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Value < B_Max Then
-                Inc B_Value
-                P_Beep(1)
-                B_Changed = 1
-            Else
-                ' no wrap, no beep
-            EndIf
-        EndIf
-
-        '--- encoder down ---
-        If W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Value > B_Min Then
-                Dec B_Value
-                P_Beep(1)
-                B_Changed = 1
-            Else
-                ' no wrap, no beep
-            EndIf
-        EndIf
-
-        ' redraw when changed
-        If B_Changed = 1 Then
-            B_Changed = 0
-            Select B_Zero
-                Case 2
-                    P_LCD(B_Ln, B_col, Str$(Dec2 B_Value))
-                Case 3
-                    P_LCD(B_Ln, B_col, Str$(Dec3 B_Value))
-                Case 5
-                    P_LCD(B_Ln, B_col, Str$(Dec5 B_Value))
-            EndSelect
-        EndIf
-
-        ' asynchronous long-press escape?
-        If b_Long = 1 Then
-            Result = B_Orig
-            GoTo Exit_P_SetField
-        EndIf
-
-        ' button pressed? Decide SHORT vs LONG
-        If B_ButtonState = 0 Then
-            P_Beep(2)
-            DelayMS 100
-            While B_ButtonState = 0
-                If b_Long = 1 Then
-                    ' long-press escape: return original (no commit)
-                    Result = B_Orig
-                    GoTo Exit_P_SetField
-                EndIf
-                DelayMS 20
-            Wend
-            ' short press: accept current edit
-            'P_Beep(2)
-            DelayMS 50
-            Result = B_Value
-            GoTo Exit_P_SetField
-        EndIf
-
-        DelayMS 10
-    Wend
-    P_Debounce()
-Exit_P_SetField:
-HRSOut "Output B_Value = ",Dec3 B_Value,13
-EndProc
-
-'---------------------------------------------------------
 Proc P_Debounce()
-While B_ButtonState =0:DelayMS 10: Wend: DelayMS 100      
+    While B_ButtonState = 0 : DelayMS 10 : Wend
+    DelayMS 100
 EndProc
-'---------------------------------------------------------
+
 Proc P_Beep(B_Len As Byte)
-    'sets the buzzer going - decriment in interrupt
     Select B_len
         Case 1
-            B_BeepLen=1
+            B_BeepLen = 1
         Case 2
-            B_BeepLen=25
+            B_BeepLen = 25
         Case 3
-            B_BeepLen=75
+            B_BeepLen = 75
         Case 4
-            B_BeepLen=150
+            B_BeepLen = 150
         Case 5
-            B_BeepLen=255                
+            B_BeepLen = 255
     EndSelect
 EndProc
-'--------------------------------------------
-'Buzzer normal exit menu
+
 Proc P_Exit_OK()
-Dim B_Beeps As Byte
-For B_Beeps=0 To 2
-    P_Beep(2)
-    DelayMS 200    
-Next B_Beeps
+    Dim B_Beeps As Byte
+    For B_Beeps = 0 To 2
+        P_Beep(2)
+        DelayMS 200
+    Next
 EndProc
-'--------------------------------------------
-' Buzzer Startup Procedure
+
 Proc P_Startup()
-  Dim cycle As Byte
-  For cycle = 1 To 5
-    P_Beep(3)
-    DelayMS 200
-  Next
+    Dim cycle As Byte
+    For cycle = 1 To 5
+        P_Beep(3)
+        DelayMS 200
+    Next
 EndProc
-'--------------------------------------------
-' Retry Procedure
-Proc P_Retry()
-  Dim B_Cycle As Byte
-  For B_Cycle = 1 To 5
-    P_Beep(3)
-    DelayMS 300
-  Next
-EndProc
-'--------------------------------------------
-'Timeout
+
 Proc P_P_Timeout()
     Dim B_Cycle As Byte
     For B_cycle = 1 To 5
         P_Beep(2)
-    DelayMS 400
-  Next
-EndProc
-'--------------------------------------------
-' Set bit (ID-1) in an existing mask and return the new mask.
-' No beep here (called multiple times by the builder).
-Proc P_MaskSetBit(L_In As Long, B_ID As Byte), Long
-    Dim L_Bit As Long
-    Dim B_I   As Byte
-
-    ' IDs are 1..24 for a 24-bit Long; ignore 0 / out-of-range
-    If B_ID = 0 Then
-        Result = L_In
-        GoTo Exit_P_MaskSetBit
-    EndIf
-    If B_ID > 24 Then
-        Result = L_In
-        GoTo Exit_P_MaskSetBit
-    EndIf
-
-    ' L_Bit = 1 << (B_ID-1)
-    L_Bit = 1
-    If B_ID > 1 Then
-        For B_I = 1 To B_ID - 1
-            L_Bit = L_Bit * 2
-        Next
-    EndIf
-
-    ' If bit already set, leave as-is; else add the bit
-    If (L_In & L_Bit) <> 0 Then
-        Result = L_In
-    Else
-        Result = L_In + L_Bit
-    EndIf
-
-Exit_P_MaskSetBit:
+        DelayMS 400
+    Next
 EndProc
 
-'--------------------------------------------
+' === Menu: list-based (=8 IDs) ===============================================
+' Build and show a menu from up to EIGHT absolute IDs (1..48).
+' Pass 0 for unused slots. Returns selected ID, or 0 on cancel/timeout.
+Proc P_MenuList8(S_Title As String * 18, I1 As Byte, I2 As Byte, I3 As Byte, I4 As Byte, I5 As Byte, I6 As Byte, I7 As Byte, I8 As Byte), Byte
+    Dim B_IDs[8] As Byte
+    Dim B_Count As Byte, B_I As Byte
 
-' Build a mask from up to TEN decimal IDs (1..24). Pass 0 to skip a slot.
-' Returns the mask via Result (Long = 24-bit in Positron).
-Proc P_BuildMask10(B1 As Byte, B2 As Byte, B3 As Byte, B4 As Byte, B5 As Byte, B6 As Byte, B7 As Byte, B8 As Byte, B9 As Byte, B10 As Byte), Long
-    'P_Beep(3)
-    'P_Debounce()
+    ' Collect valid IDs (1..48) in supplied order
+    B_Count = 0
+    If I1 >=1 And I1 <=48 Then B_IDs[B_Count]=I1: Inc B_Count
+    If I2 >=1 And I2 <=48 Then B_IDs[B_Count]=I2: Inc B_Count
+    If I3 >=1 And I3 <=48 Then B_IDs[B_Count]=I3: Inc B_Count
+    If I4 >=1 And I4 <=48 Then B_IDs[B_Count]=I4: Inc B_Count
+    If I5 >=1 And I5 <=48 Then B_IDs[B_Count]=I5: Inc B_Count
+    If I6 >=1 And I6 <=48 Then B_IDs[B_Count]=I6: Inc B_Count
+    If I7 >=1 And I7 <=48 Then B_IDs[B_Count]=I7: Inc B_Count
+    If I8 >=1 And I8 <=48 Then B_IDs[B_Count]=I8: Inc B_Count
 
-    Dim L_Mask As Long
-    L_Mask = 0
-
-    If B1  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B1)
-    If B2  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B2)
-    If B3  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B3)
-    If B4  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B4)
-    If B5  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B5)
-    If B6  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B6)
-    If B7  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B7)
-    If B8  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B8)
-    If B9  <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B9)
-    If B10 <> 0 Then L_Mask = P_MaskSetBit(L_Mask, B10)
-
-    Result = L_Mask
-    GoTo Exit_P_BuildMask10
-Exit_P_BuildMask10:
-EndProc
-'--------------------------------------------
-' Helper: return 1 if timed out (and clear flag), else 0
-Proc P_TimedOut(), Byte
-    If b_MTimeout = 1 Then
-        b_MTimeout = 0
-        Result = 1
-        GoTo Exit_P_TimedOut
-    EndIf
-    Result = 0
-Exit_P_TimedOut:
-EndProc
-
-'--------------------------------------------
-' Lookup strings by index (1-based)
-'--------------------------------------------------------------------
-Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
-    Clear b_MTimeout
-    Clear b_Long
-    Clear b_ReInitLCD                   ' <— important: avoid LCD reinit from menu long-press
-    L_TimeoutRemain = B_Menu_Timeout*1000           'reload the menu timer  
+    ' Guards
+    Clear b_MTimeout : Clear b_Long : Clear b_ReInitLCD
+    L_TimeoutRemain = B_Menu_Timeout*1000
     P_Debounce()
 
-    ' Build list of IDs from mask (1..24)
-    Dim B_IDs[24] As Byte
-    Dim B_Count  As Byte
-    Dim B_I      As Byte
-    Dim L_Tmp    As Long
-    
-    B_Count = 0
-    L_Tmp   = L_Mask
-    For B_I = 0 To 23               ' bits 0..23 ? IDs 1..24
-        If (L_Tmp & 1) <> 0 Then
-            B_IDs[B_Count] = B_I + 1
-            Inc B_Count
-        EndIf
-        L_Tmp = L_Tmp >> 1          ' shift right 1 bit
-    Next
-
-    '–– display & input state ––
-    Dim B_Index      As Byte   ' current selection
-    Dim B_First      As Byte   ' first visible index
-    Dim B_PrevIndex  As Byte
-    Dim B_PrevFirst  As Byte
-    Dim B_Dirty      As Byte
-    Dim W_LastPos    As Word
-    Dim S_Line       As String * 18
-    Dim B_Len        As Byte
+    ' UI state
+    Dim B_Index As Byte
+    Dim B_First As Byte
+    Dim B_PrevIndex As Byte
+    Dim B_PrevFirst As Byte
+    Dim B_Dirty As Byte
+    Dim W_LastPos As Word
+    Dim S_Line As String * 18
+    Dim B_Len As Byte
 
     Cls
     Print At 1,1, S_Title
 
-    B_Index     = 0
-    B_PrevIndex = 255     ' force first render
-    B_PrevFirst = 255
-    B_Dirty     = 1
-    W_LastPos   = W_EncoderPos
+    B_Index=0 : B_PrevIndex=255 : B_PrevFirst=255 : B_Dirty=1
+    W_LastPos = W_EncoderPos
 
     While 1 = 1
-        ' compute 3-line window around selection
+        ' 3-line window
         If B_Index < 2 Then
             B_First = 0
         Else
             B_First = B_Index - 2
         EndIf
-
-        ' mark dirty if window or selection changed
-        If B_First <> B_PrevFirst Then
-            B_Dirty = 1
-        ElseIf B_Index <> B_PrevIndex Then
-            B_Dirty = 1
+        If B_Count >= 3 Then
+            If B_First > (B_Count - 3) Then B_First = B_Count - 3
+        Else
+            B_First = 0
         EndIf
 
-        ' redraw only when dirty
+        If B_First <> B_PrevFirst Or B_Index <> B_PrevIndex Then B_Dirty = 1
+
+        ' redraw
         If B_Dirty = 1 Then
             For B_I = 0 To 2
                 Print At B_I + 2,1,"                    "
@@ -1310,108 +927,92 @@ Proc P_Menu(S_Title As String * 18, L_Mask As Long), Byte
                     EndIf
                 EndIf
             Next
-            B_PrevFirst = B_First
-            B_PrevIndex = B_Index
-            B_Dirty     = 0
+            B_PrevFirst = B_First : B_PrevIndex = B_Index : B_Dirty = 0
         EndIf
 
-        ' encoder movement (no wrap), beep only on valid move
+        ' encoder
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Index < (B_Count - 1) Then
-                Inc B_Index
-                P_Beep(1)
-            EndIf
+            If B_Index < (B_Count - 1) Then Inc B_Index : P_Beep(1)
         ElseIf W_EncoderPos < W_LastPos Then
             W_LastPos = W_EncoderPos
-            If B_Index > 0 Then
-                Dec B_Index
-                P_Beep(1)
-            EndIf
+            If B_Index > 0 Then Dec B_Index : P_Beep(1)
         EndIf
 
-     ' --- button = select (fixed) ---
+        ' button (short=select, long=escape)
         If B_ButtonState = 0 Then
-            ' Wait for release or detect LONG
             While B_ButtonState = 0
                 If b_Long = 1 Then
-                    Clear b_Long
-                    Clear b_ReInitLCD
-                    If B_BeepLen = 0 Then P_Beep(5)   ' single long beep for menu-escape
-                    Result = 0                         ' "no change / escape"
-                    GoTo Exit_P_Menu
+                    Clear b_Long : Clear b_ReInitLCD
+                    If B_BeepLen = 0 Then P_Beep(5)
+                    Result = 0
+                    GoTo Exit_P_MenuList8
                 EndIf
                 DelayMS 10
             Wend
-            ' Short press: accept selection
             P_Beep(2)
             Result = B_IDs[B_Index]
-            GoTo Exit_P_Menu
+            GoTo Exit_P_MenuList8
         EndIf
-    ' --- timeout? exit with long beep, no change ---
+
+        ' timeout
         If b_MTimeout = 1 Then
-            Clear b_MTimeout
-            Clear b_ReInitLCD
+            Clear b_MTimeout : Clear b_ReInitLCD
             If B_BeepLen = 0 Then P_Beep(5)
             Result = 0
-            GoTo Exit_P_Menu
+            GoTo Exit_P_MenuList8
         EndIf
+
         DelayMS 50
     Wend
-
-
-    Exit_P_Menu:
+Exit_P_MenuList8:
 EndProc
-'--------------------------------------------------------------------
-'––– RAM buffers for display –––
-'--- FLASH (program memory) strings ---
-MenuTable:
-Dim S_String1_F  As Flash8 = "Main Menu", 0
-Dim S_String2_F  As Flash8 = "Utility Menu", 0
-Dim S_String3_F  As Flash8 = "Setup Menu", 0
-Dim S_String4_F  As Flash8 = "Date and Time", 0
-Dim S_String5_F  As Flash8 = "View Log", 0
-Dim S_String6_F  As Flash8 = "Clear Log", 0
-Dim S_String7_F  As Flash8 = "Menu Timeout", 0
-Dim S_String8_F  As Flash8 = "Contrast", 0
-Dim S_String9_F  As Flash8 = "Pwr Fail Delay", 0
-Dim S_String10_F As Flash8 = "Input 1", 0
-Dim S_String11_F As Flash8 = "Input 2", 0
-Dim S_String12_F As Flash8 = "Input 3", 0
-Dim S_String13_F As Flash8 = "End Runtime", 0
-Dim S_String14_F As Flash8 = "Pulse Duration", 0
-Dim S_String15_F As Flash8 = "RunTime", 0
-Dim S_String16_F As Flash8 = "Pressure", 0
-Dim S_String17_F As Flash8 = "Temperature", 0
-Dim S_String18_F As Flash8 = "Flow", 0
-Dim S_String19_F As Flash8 = "Vacuum", 0
-Dim S_String20_F As Flash8 = "BACK", 0
 
-' copy flash into RAM once at startup
-Proc InitMenuStrings()
-    S_String1 = S_String1_F
-    S_String2 = S_String2_F
-    S_String3 = S_String3_F
-    S_String4 = S_String4_F    
-    S_String5 = S_String5_F    
-    S_String6 = S_String6_F    
-    S_String7 = S_String7_F    
-    S_String8 = S_String8_F    
-    S_String9 = S_String9_F    
-    S_String10 = S_String10_F    
-    S_String11 = S_String11_F    
-    S_String12 = S_String12_F    
-    S_String13 = S_String13_F    
-    S_String14 = S_String14_F    
-    S_String15 = S_String15_F
-    S_String16 = S_String16_F
-    S_String17 = S_String17_F
-    S_String18 = S_String18_F
-    S_String19 = S_String19_F
-    S_String20 = S_String20_F
-EndProc
-'---------------------------------------------------------------
-'––– lookup routine –––
+' === Menu Strings =============================================================
+' Base IDs 1..20
+Menu_Item_List:
+Dim S_String1_F   As Flash8 = "Main Menu", 0
+Dim S_String2_F   As Flash8 = "Utility Menu", 0
+Dim S_String3_F   As Flash8 = "Setup Menu", 0
+Dim S_String4_F   As Flash8 = "Date and Time", 0
+Dim S_String5_F   As Flash8 = "View Log", 0
+Dim S_String6_F   As Flash8 = "Clear Log", 0
+Dim S_String7_F   As Flash8 = "Menu Timeout", 0
+Dim S_String8_F   As Flash8 = "Contrast", 0
+Dim S_String9_F   As Flash8 = "Pwr Fail Delay", 0
+Dim S_String10_F  As Flash8 = "Input 1", 0
+Dim S_String11_F  As Flash8 = "Input 2", 0
+Dim S_String12_F  As Flash8 = "Input 3", 0
+Dim S_String13_F  As Flash8 = "End Runtime", 0
+Dim S_String14_F  As Flash8 = "Pulse Duration", 0
+Dim S_String15_F  As Flash8 = "RunTime", 0
+Dim S_String16_F  As Flash8 = "Pressure", 0
+Dim S_String17_F  As Flash8 = "Temperature", 0
+Dim S_String18_F  As Flash8 = "Flow", 0
+Dim S_String19_F  As Flash8 = "Vacuum", 0
+Dim S_String20_F  As Flash8 = "BACK", 0
+Dim S_String21_F  As Flash8 = "Digital", 0
+Dim S_String22_F  As Flash8 = "Fail HIGH", 0
+Dim S_String23_F  As Flash8 = "Fail LOW", 0
+Dim S_String24_F  As Flash8 = "Pulse", 0
+Dim S_String25_F  As Flash8 = "Latch", 0
+Dim S_String26_F  As Flash8 = "Set Scale", 0
+Dim S_String27_F  As Flash8 = "Not Used", 0
+Dim S_String28_F  As Flash8 = "No Action", 0
+Dim S_String29_F  As Flash8 = "Fail Primary Low", 0
+Dim S_String30_F  As Flash8 = "Fail Secondary Low", 0
+Dim S_String31_F  As Flash8 = "Extra Item 11", 0
+Dim S_String32_F  As Flash8 = "Extra Item 12", 0
+Dim S_String33_F  As Flash8 = "Extra Item 13", 0
+Dim S_String34_F  As Flash8 = "Extra Item 14", 0
+Dim S_String35_F  As Flash8 = "Extra Item 15", 0
+Dim S_String36_F  As Flash8 = "Extra Item 16", 0
+Dim S_String37_F  As Flash8 = "Extra Item 17", 0
+Dim S_String38_F  As Flash8 = "Extra Item 18", 0
+Dim S_String39_F  As Flash8 = "Extra Item 19", 0
+Dim S_String40_F  As Flash8 = "Extra Item 20", 0
+
+' Lookup by absolute ID (1..40)
 Proc P_GetMenuString(B_ID As Byte), String * 18
     Select Case B_ID
         Case 1
@@ -1454,171 +1055,293 @@ Proc P_GetMenuString(B_ID As Byte), String * 18
             Result = S_String19_F
         Case 20
             Result = S_String20_F
+        Case 21
+            Result = S_String21_F
+        Case 22
+            Result = S_String22_F
+        Case 23
+            Result = S_String23_F
+        Case 24
+            Result = S_String24_F
+        Case 25
+            Result = S_String25_F
+        Case 26
+            Result = S_String26_F
+        Case 27
+            Result = S_String27_F
+        Case 28
+            Result = S_String28_F
+        Case 29
+            Result = S_String29_F
+        Case 30
+            Result = S_String30_F
+        Case 31
+            Result = S_String31_F
+        Case 32
+            Result = S_String32_F
+        Case 33
+            Result = S_String33_F
+        Case 34
+            Result = S_String34_F
+        Case 35
+            Result = S_String35_F
+        Case 36
+            Result = S_String36_F
+        Case 37
+            Result = S_String37_F
+        Case 38
+            Result = S_String38_F
+        Case 39
+            Result = S_String39_F
+        Case 40
+            Result = S_String40_F
         Case Else
             Result = " "
     End Select
 EndProc
-'---------------------------------------------------------------
-'--- low-level helpers (temporary bit-bang only for wake-up) ---
-Proc _LCD_SetHiNibble(B_Val As Byte)      ' drives bits onto D7..D4 from Val[7:4]
-    If B_Val.7 = 1 Then
-        High LCD_D7_PIN    
-    Else
-        Low LCD_D7_PIN    
-    EndIf
-    If B_Val.6 = 1 Then
-        High LCD_D6_PIN    
-    Else
-        Low LCD_D6_PIN    
-    EndIf 
 
-    If B_Val.5 = 1 Then
-        High LCD_D5_PIN    
-    Else
-        Low LCD_D5_PIN    
-    EndIf
-
-    If B_Val.4 = 1 Then
-        High LCD_D4_PIN    
-    Else
-        Low LCD_D4_PIN    
-    EndIf
-
+' === LCD robust init ==========================================================
+Proc _LCD_SetHiNibble(B_Val As Byte)
+    If B_Val.7 = 1 Then High LCD_D7_PIN: Else: Low LCD_D7_PIN: EndIf
+    If B_Val.6 = 1 Then High LCD_D6_PIN: Else: Low LCD_D6_PIN: EndIf
+    If B_Val.5 = 1 Then High LCD_D5_PIN: Else: Low LCD_D5_PIN: EndIf
+    If B_Val.4 = 1 Then High LCD_D4_PIN: Else: Low LCD_D4_PIN: EndIf
 EndProc
-'---------------------------------------------------------------
+
 Proc _LCD_PulseE()
-    High LCD_E_PIN
-    DelayUS 1              ' >300 ns
-    Low  LCD_E_PIN         ' falling edge latches data
-    DelayUS 50
+    High LCD_E_PIN : DelayUS 1
+    Low  LCD_E_PIN : DelayUS 50
 EndProc
-'---------------------------------------------------------------
-'--- robust wake + switch to 4-bit, then finish with library-friendly commands ---
+
 Proc P_LCD_SafeInit()
-    ' Set control/data lines inactive
-    DelayMS 250                        ' long, slow ramp tolerance
-    Low PORTA.5                        ' R/W = 0 (only if wired to RA5)
-    Low LCD_RS_PIN
-    Low LCD_E_PIN
-    Low LCD_D4_PIN
-    Low LCD_D5_PIN
-    Low LCD_D6_PIN
-    Low LCD_D7_PIN
-
-    DelayMS 50                         ' >40 ms after VDD
-
-    ' --- strong wake (8-bit style) ---
-    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 5
-    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
-    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
-    _LCD_SetHiNibble($20) : _LCD_PulseE() : DelayMS 2   ' enter 4-bit
-
-    ' Optional second pass helps in nasty power cycles
+    DelayMS 250
+    Low PORTA.5
+    Low LCD_RS_PIN : Low LCD_E_PIN
+    Low LCD_D4_PIN : Low LCD_D5_PIN : Low LCD_D6_PIN : Low LCD_D7_PIN
+    DelayMS 50
     _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 5
     _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
     _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
     _LCD_SetHiNibble($20) : _LCD_PulseE() : DelayMS 2
-
-    ' --- now standard 4-bit commands (with guards) ---
-    Print $FE, $28                    ' function: 4-bit, 2-line, 5x8
-    DelayUS 80
-    Print $FE, $08                    ' display OFF
-    DelayUS 80
-    Print $FE, $01                    ' clear display
-    DelayMS 3                         ' clear/home need >1.52ms; give 3ms
-    Print $FE, $06                    ' entry mode: increment, no shift
-    DelayUS 80
-    Print $FE, $0C                    ' display ON, cursor OFF, blink OFF
-    DelayUS 80
+    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 5
+    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
+    _LCD_SetHiNibble($30) : _LCD_PulseE() : DelayMS 2
+    _LCD_SetHiNibble($20) : _LCD_PulseE() : DelayMS 2
+    Print $FE, $28 : DelayUS 80
+    Print $FE, $08 : DelayUS 80
+    Print $FE, $01 : DelayMS 3
+    Print $FE, $06 : DelayUS 80
+    Print $FE, $0C : DelayUS 80
 EndProc
 
-'---------------------------------------------------------------
-' Edit a signed word with encoder and button
-' Returns the final value via Result
-' - S_Current : starting value (SWord)
-' - S_Upper   : max allowed (SWord)
-' - S_Lower   : min allowed (SWord)
+' === Value editors ============================================================
+' Adjust a byte field with encoder; short press accept; long press returns original.
+Proc P_SetField(B_Ln As Byte, B_col As Byte, B_Zero As Byte, B_Value As Byte, B_Min As Byte, B_Max As Byte, ByRef W_LastPos As Word), Word
+    Dim B_Orig As Byte
+    Dim B_Changed As Byte
+
+    P_Debounce()
+    B_Orig    = B_Value
+    B_Changed = 1
+    W_EncoderPos = W_LastPos
+
+    While 1 = 1
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Value < B_Max Then Inc B_Value : P_Beep(1) : B_Changed = 1
+        EndIf
+        If W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Value > B_Min Then Dec B_Value : P_Beep(1) : B_Changed = 1
+        EndIf
+
+        If B_Changed = 1 Then
+            B_Changed = 0
+            Select B_Zero
+                Case 2
+                    P_LCD(B_Ln, B_col, Str$(Dec2 B_Value))
+                Case 3
+                    P_LCD(B_Ln, B_col, Str$(Dec3 B_Value))
+                Case 5
+                    P_LCD(B_Ln, B_col, Str$(Dec5 B_Value))
+            EndSelect
+        EndIf
+
+        If b_Long = 1 Then Result = B_Orig : GoTo Exit_P_SetField
+
+        If B_ButtonState = 0 Then
+            P_Beep(2)
+            DelayMS 100
+            While B_ButtonState = 0
+                If b_Long = 1 Then Result = B_Orig : GoTo Exit_P_SetField
+                DelayMS 20
+            Wend
+            DelayMS 50
+            Result = B_Value
+            GoTo Exit_P_SetField
+        EndIf
+
+        DelayMS 10
+    Wend
+Exit_P_SetField:
+EndProc
+
+' Signed word editor
 Proc P_Signed(S_Current As SWord, S_Upper As SWord, S_Lower As SWord), SWord
-    P_Beep(3)         ' entry beep
+    P_Beep(3)
     P_Debounce()
 
     Dim S_Value   As SWord
     Dim W_LastPos As Word
-    Dim W_Abs     As Word
     Dim B_Changed As Byte
-    Dim W_msCounter As Word
-    Dim B_secCounter As Byte
-    Clear b_MTimeout                'Clear the timeout flag
-    ' ensure limits make sense
-    If S_Upper < S_Lower Then
-        Dim S_Tmp As SWord
-        S_Tmp = S_Upper : S_Upper = S_Lower : S_Lower = S_Tmp
-    EndIf
+
+    Clear b_MTimeout
+    If S_Upper < S_Lower Then Dim S_Tmp As SWord : S_Tmp = S_Upper : S_Upper = S_Lower : S_Lower = S_Tmp
 
     Cls
-    ' clamp start value
     S_Value = S_Current
     If S_Value < S_Lower Then S_Value = S_Lower
     If S_Value > S_Upper Then S_Value = S_Upper
 
-    ' ---- initial draw BEFORE any change ----
+    If S_Lower < 0 Then Print At 2,1,S_Current Else Print At 3,1,Dec5 S_Current
 
-    If S_Lower < 0 Then 'this could be a minus value
-        Print At 2,1,S_Current                          'could be signed - so print sign
-    Else    'can't be minus
-        Print At 3,1,Dec5 S_Current    
-    EndIf
-    ' ---------------------------------------
-
-    ' snapshot encoder and enter edit loop
     W_LastPos = W_EncoderPos
     B_Changed = 0
 
     While 1 = 1
-        ' encoder move? (no wrap; beep only on actual change)
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
-            If S_Value < S_Upper Then
-                Inc S_Value
-                P_Beep(1)
-                B_Changed = 1
-            EndIf
+            If S_Value < S_Upper Then Inc S_Value : P_Beep(1) : B_Changed = 1
         ElseIf W_EncoderPos < W_LastPos Then
             W_LastPos = W_EncoderPos
-            If S_Value > S_Lower Then
-                Dec S_Value
-                P_Beep(1)
-                B_Changed = 1
-            EndIf
+            If S_Value > S_Lower Then Dec S_Value : P_Beep(1) : B_Changed = 1
         EndIf
 
-        ' redraw only when changed
         If B_Changed = 1 Then
-            'redraw the screen
-            If S_Lower < 0 Then 'this could be a minus value
-                Print At 2,1,S_Value                          'could be signed - so print sign
-            Else    'can't be minus
-                Print At 3,1,Dec5 S_Value    
-            EndIf
+            If S_Lower < 0 Then Print At 2,1,S_Value Else Print At 3,1,Dec5 S_Value
             B_Changed = 0
         EndIf
 
-        ' button confirms and exits
         If B_ButtonState = 0 Then
             P_Exit_OK()
             P_Debounce()
             Result = S_Value
-            HRSOut "Result = ",Dec S_Value,13
             GoTo Exit_P_Signed
         EndIf
 
         DelayMS 50
     Wend
-    Exit_P_Signed:
+Exit_P_Signed:
 EndProc
-'---------------------------------------------------------------
-' B_Mode=0 -> HH:MM, B_Mode=1 -> MM:SS
-' Returns total seconds via Result. Cancel (long/timeout) returns L_Current.
+
+
+'' Edit a signed value at a specific line/column, showing it in [     ].
+'' - B_Ln, B_Col : where the numeric field starts (the '[' is drawn at B_Col-1)
+'' - S_Current   : starting value (SWord)
+'' - S_Min/Max   : allowed range (SWord)
+'' - W_LastPos   : encoder position (ByRef) so the next field can continue smoothly
+'' Returns the committed value on SHORT press.
+'' On LONG press or timeout, it just returns immediately; the caller should
+'' detect/handle via P_UserAborted() (as your P_Scale already does).
+'Proc P_SignedAt(B_Ln As Byte, B_Col As Byte, _
+'                S_Current As SWord, S_Min As SWord, S_Max As SWord, _
+'                ByRef W_LastPos As Word), SWord
+
+'    Dim S_Value   As SWord
+'    Dim B_Changed As Byte
+'    Dim W_Mag     As Word
+
+'    ' Clamp start
+'    S_Value = S_Current
+'    If S_Value < S_Min Then S_Value = S_Min
+'    If S_Value > S_Max Then S_Value = S_Max
+
+'    ' Take over the encoder where the caller left it
+'    W_LastPos = W_EncoderPos
+'    B_Changed = 1
+
+'    ' Helper to (re)draw the bracketed field with a 5-char number area
+'    ' [xxxxx] where x is sign+digits (we write either "-dddd" or "ddddd")
+'Draw_Field:
+'    Print At B_Ln, B_Col-1, "[     ]"          ' clear the 5-char field between brackets
+'    If S_Value < 0 Then
+'        W_Mag = 0 - S_Value                     ' absolute magnitude
+'        Print At B_Ln, B_Col, "-"
+'        Print At B_Ln, B_Col+1, Dec4 W_Mag      ' 4 digits after the sign
+'    Else
+'        W_Mag = S_Value
+'        Print At B_Ln, B_Col, Dec5 W_Mag        ' 5 digits, zero-padded
+'    EndIf
+
+'    While 1 = 1
+'        ' Cancel paths: let caller react via P_UserAborted()
+'        If b_Long = 1 Then
+'            Result = S_Value
+'            GoTo Exit_P_SignedAt
+'        EndIf
+'        If b_MTimeout = 1 Then
+'            Result = S_Value
+'            GoTo Exit_P_SignedAt
+'        EndIf
+
+'        ' Encoder up
+'        If W_EncoderPos > W_LastPos Then
+'            W_LastPos = W_EncoderPos
+'            If S_Value < S_Max Then
+'                Inc S_Value
+'                P_Beep(1)
+'                B_Changed = 1
+'            EndIf
+'        EndIf
+
+'        ' Encoder down
+'        If W_EncoderPos < W_LastPos Then
+'            W_LastPos = W_EncoderPos
+'            If S_Value > S_Min Then
+'                Dec S_Value
+'                P_Beep(1)
+'                B_Changed = 1
+'            EndIf
+'        EndIf
+
+'        ' Redraw only when changed
+'        If B_Changed = 1 Then
+'            B_Changed = 0
+'            GoTo Draw_Field
+'        EndIf
+
+'        ' Short press = commit
+'        If B_ButtonState = 0 Then
+'            P_Beep(2)
+'            ' wait for release, still allow long during hold
+'            While B_ButtonState = 0
+'                If b_Long = 1 Then
+'                    Result = S_Value
+'                    GoTo Exit_P_SignedAt
+'                EndIf
+'                DelayMS 10
+'            Wend
+'            Result = S_Value
+'            GoTo Exit_P_SignedAt
+'        EndIf
+
+'        DelayMS 15
+'    Wend
+
+'Exit_P_SignedAt:
+'EndProc
+
+
+
+
+
+
+
+
+
+
+
+' Time editor (HH:MM or MM:SS) with bounds
 Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), Long
     Dim B_Big As Byte, B_Small As Byte
     Dim W_LastPos As Word
@@ -1631,22 +1354,15 @@ Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), L
     Dim B_Ticks As Byte, B_Flash As Byte
     Dim B_Next As Byte
 
-    ' Clamp current into bounds
     If L_Current < L_Min Then L_Current = L_Min
     If L_Current > L_Max Then L_Current = L_Max
 
-    ' Scales + header
-    If B_Mode = 0 Then                 ' HH:MM
-        L_ScaleBig   = 3600
-        L_ScaleSmall = 60
-        Print At 3,1,"HH:MM"
-    Else                               ' MM:SS
-        L_ScaleBig   = 60
-        L_ScaleSmall = 1
-        Print At 3,1,"MM:SS"
+    If B_Mode = 0 Then
+        L_ScaleBig   = 3600 : L_ScaleSmall = 60 : Print At 3,1,"HH:MM"
+    Else
+        L_ScaleBig   = 60   : L_ScaleSmall = 1  : Print At 3,1,"MM:SS"
     EndIf
 
-    ' Split current -> fields
     L_Tmp = L_Current / L_ScaleBig : If L_Tmp > 99 Then L_Tmp = 99
     B_Big = L_Tmp
     L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
@@ -1654,24 +1370,17 @@ Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), L
     L_Tmp = L_Tmp / L_ScaleSmall : If L_Tmp > 59 Then L_Tmp = 59
     B_Small = L_Tmp
 
-    ' Draw
-    Print At 4,1, Dec2 B_Big
-    Print At 4,3, ":"
-    Print At 4,4, Dec2 B_Small
+    Print At 4,1, Dec2 B_Big : Print At 4,3, ":" : Print At 4,4, Dec2 B_Small
 
-    ' ===== Edit BIG (flash cols 1–2) =====
     W_LastPos = W_EncoderPos
     B_Ticks = 0 : B_Flash = 1
     While 1 = 1
-        ' cancel
         If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
         If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
 
-        ' max BIG = floor(L_Max / scale_big)
         L_Tmp = L_Max / L_ScaleBig : If L_Tmp > 99 Then L_Tmp = 99
         B_BigMax = L_Tmp
 
-        ' encoder
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
             If B_Big < B_BigMax Then Inc B_Big : B_Changed = 1 : P_Beep(1)
@@ -1680,13 +1389,11 @@ Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), L
             If B_Big > 0 Then Dec B_Big : B_Changed = 1 : P_Beep(1)
         EndIf
 
-        ' redraw when visible
         If B_Changed = 1 Then
             B_Changed = 0
             If B_Flash = 1 Then Print At 4,1, Dec2 B_Big
         EndIf
 
-        ' blink BIG pair
         Inc B_Ticks
         If B_Ticks >= 10 Then
             B_Ticks = 0 : B_Flash = ~B_Flash
@@ -1695,11 +1402,11 @@ Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), L
             Else
                 Print At 4,1, "  "
             EndIf
+
         EndIf
 
-        ' short press -> small
         If B_ButtonState = 0 Then
-            Print At 4,1, Dec2 B_Big                        ' ensure visible
+            Print At 4,1, Dec2 B_Big
             While B_ButtonState = 0
                 If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
                 If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
@@ -1712,23 +1419,14 @@ Proc P_TEdit(B_Mode As Byte, L_Current As Long, L_Min As Long, L_Max As Long), L
     Wend
 
 Edit_Small:
-    ' ---- compute SMALL bounds from BIG, using integer-safe math ----
-    ' small_max = min(59, floor((L_Max - big*scale_big)/scale_small)), never <0
     L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
-    If L_Max > L_Tmp Then
-        L_Tmp = L_Max - L_Tmp
-    Else
-        L_Tmp = 0
-    EndIf
-    L_Q = L_Tmp / L_ScaleSmall
-    If L_Q > 59 Then L_Q = 59
+    If L_Max > L_Tmp Then L_Tmp = L_Max - L_Tmp Else L_Tmp = 0
+    L_Q = L_Tmp / L_ScaleSmall : If L_Q > 59 Then L_Q = 59
     B_SmallMax = L_Q
 
-    ' small_min = max(0, ceil((L_Min - big*scale_big)/scale_small))
     L_Tmp = B_Big : L_Tmp = L_Tmp * L_ScaleBig
     If L_Min > L_Tmp Then
         L_Tmp = L_Min - L_Tmp
-        ' ceil(a/b) = (a + b - 1) / b
         L_Q = L_Tmp + (L_ScaleSmall - 1)
         L_Q = L_Q / L_ScaleSmall
         If L_Q > 59 Then L_Q = 59
@@ -1737,20 +1435,16 @@ Edit_Small:
         B_SmallMin = 0
     EndIf
 
-    ' clamp current small into [min..max]
     If B_Small < B_SmallMin Then B_Small = B_SmallMin
     If B_Small > B_SmallMax Then B_Small = B_SmallMax
     Print At 4,4, Dec2 B_Small
 
-    ' flash SMALL digits (cols 4–5)
     W_LastPos = W_EncoderPos
     B_Ticks = 0 : B_Flash = 1
     While 1 = 1
-        ' cancel
         If b_Long = 1 Then Clear b_Long : Result = L_Current : GoTo Exit_P_TEdit
         If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Result = L_Current : GoTo Exit_P_TEdit
 
-        ' encoder with hard clamps
         If W_EncoderPos > W_LastPos Then
             W_LastPos = W_EncoderPos
             B_Next = B_Small + 1
@@ -1773,7 +1467,6 @@ Edit_Small:
             If B_Flash = 1 Then Print At 4,4, Dec2 B_Small
         EndIf
 
-        ' blink SMALL pair
         Inc B_Ticks
         If B_Ticks >= 10 Then
             B_Ticks = 0 : B_Flash = ~B_Flash
@@ -1782,9 +1475,9 @@ Edit_Small:
             Else
                 Print At 4,4, "  "
             EndIf
+
         EndIf
 
-        ' short press -> accept
         If B_ButtonState = 0 Then
             Print At 4,4, Dec2 B_Small
             While B_ButtonState = 0
@@ -1794,7 +1487,6 @@ Edit_Small:
             Wend
             P_Beep(2)
 
-            ' total = big*scale_big + small*scale_small, then clamp
             L_Total = B_Big : L_Total = L_Total * L_ScaleBig
             L_Tmp   = B_Small : L_Tmp = L_Tmp * L_ScaleSmall
             L_Total = L_Total + L_Tmp
@@ -1807,46 +1499,68 @@ Edit_Small:
 
         DelayMS 15
     Wend
-
 Exit_P_TEdit:
-    ' ensure both fields visible when leaving
     Print At 4,1, Dec2 B_Big
     Print At 4,4, Dec2 B_Small
 EndProc
 
+' === Date/Time UI =============================================================
+Proc P_SetDateTime()
+    Cls : P_Beep(3) : P_Debounce() : Clear b_Escape
 
-'---------------------------------------------------------------
-GetTime:                                                                                    'read the time back from the rtc
-HRSOut "Gettime",13
-BusIn Read_From_3231, 0, [B_Seconds, B_Minute, B_Hour, B_Day, B_Date, B_Month, B_Year, B_Ctrol]
+    Dim W_LastPos As Word
+    Dim B_Date0   As Byte, B_Month0 As Byte, B_Year0 As Byte
+    Dim B_Hour0   As Byte, B_Minute0 As Byte, B_Sec0 As Byte
 
-'Check this block
-B_Minute.7=0                                                                             'mask off unwanted bits
-B_Hour.7=0
-B_Hour.6=0
-B_Date=B_Date & %00111111
-B_Month=B_Month & %00011111
+    DelayMS 200
+    P_LCD(1,1,"SET DATE AND TIME")
 
+    P_RTC_Gettime()
+    B_Date0   = B_Date   : B_Month0  = B_Month : B_Year0 = B_Year
+    B_Hour0   = B_Hour   : B_Minute0 = B_Minute: B_Sec0  = B_Seconds
 
-'Convrt values from BCD to Binary
-B_Year=B2BIN(B_Year)
-B_Month=B2BIN(B_Month)
-B_Date=B2BIN(B_Date)
-B_Hour=B2BIN(B_Hour)
-B_Day=B2BIN(B_Day)
-B_Minute=B2BIN(B_Minute)
-B_Seconds=B2BIN(B_Seconds)
-Return
+    P_LCD(3,1, Str$(Dec2 B_Date) + "/MM/YY HH:MM:SS")
 
-'---------------------------------------------------------------
+    B_Date   = P_SetField(3,1,2,B_Date,  1,31,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,1, Str$(Dec2 B_Date) + "/" + Str$(Dec2 B_Month))
+
+    B_Month  = P_SetField(3,4,2,B_Month, 1,12,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,4, Str$(Dec2 B_Month))
+
+    B_Year   = P_SetField(3,7,2,B_Year, 25,99,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,7, Str$(Dec2 B_Year))
+
+    B_Hour   = P_SetField(3,10,2,B_Hour, 0,23,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,10, Str$(Dec2 B_Hour))
+
+    B_Minute = P_SetField(3,13,2,B_Minute,0,59,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,13, Str$(Dec2 B_Minute))
+
+    B_Seconds= P_SetField(3,16,2,B_Seconds,0,59,W_LastPos) : If b_Long = 1 Then GoTo Abort_NoCommit
+    P_LCD(3,16, Str$(Dec2 B_Seconds))
+
+    P_RTC_Settime()
+    GoTo Exit_P_SetDateTime
+
+Abort_NoCommit:
+    B_Date = B_Date0 : B_Month = B_Month0 : B_Year = B_Year0
+    B_Hour = B_Hour0 : B_Minute= B_Minute0: B_Seconds = B_Sec0
+    b_Escape = 1
+
+Exit_P_SetDateTime:
+    Clear b_Long
+    Cls
+EndProc
+
+' === RTC helpers ==============================================================
 Proc B2BCD(B_convert As Byte), Byte
     Dim temp1 As Byte, temp2 As Byte
     temp1 = Dig B_convert, 0
     temp2 = Dig B_convert, 1
     temp2 = temp2 << 4
-    Result = temp2 ^ temp1           ' XOR
+    Result = temp2 ^ temp1
 EndProc
-'---------------------------------------------------------------
+
 Proc B2BIN(B_convert As Byte), Byte
     Dim t1 As Byte, t2 As Byte
     t1 = B_convert & $0F
@@ -1855,46 +1569,28 @@ Proc B2BIN(B_convert As Byte), Byte
     Result = t1 + t2
 EndProc
 
-'---------------------------------------------------------------
 Proc P_RTC_Settime()
-    ' Convert to BCD
     B_Seconds = B2BCD(B_Seconds)
     B_Minute  = B2BCD(B_Minute)
     B_Hour    = B2BCD(B_Hour)
-    B_Day     = B_Day & $07          ' 1..7 (no BCD needed, but harmless if left as-is)
+    B_Day     = B_Day & $07
     B_Date    = B2BCD(B_Date)
     B_Month   = B2BCD(B_Month)
     B_Year    = B2BCD(B_Year)
-
-    ' Force 24-hour mode (bit6=0)
-    B_Hour = B_Hour & $3F
-
-    ' Write **only 7 bytes** of time (0x00..0x06)
+    B_Hour    = B_Hour & $3F
     BusOut Write_To_3231, 0, [B_Seconds, B_Minute, B_Hour, B_Day, B_Date, B_Month, B_Year]
-
-    ' If you actually need Control/Status, do:
-    ' BusOut RTC, $0E, [B_Control]
-    ' BusOut RTC, $0F, [B_Status]
-
-    P_RTC_Gettime()                      ' read back into decimal
+    P_RTC_Gettime()
 EndProc
 
-'---------------------------------------------------------------
 Proc P_RTC_Gettime()
-    Clear b_ReadRTC                                                     'clear the read rtc flag
+    Clear b_ReadRTC
     Dim B_DayRaw As Byte, B_HourRaw As Byte
-
-    ' Burst read 7 bytes (sec..year)
     BusIn Read_From_3231, 0, [B_Seconds, B_Minute, B_HourRaw, B_DayRaw, B_Date, B_Month, B_Year]
-
-    ' Mask control bits
     B_Seconds = B_Seconds & $7F
     B_Minute  = B_Minute  & $7F
-    B_HourRaw = B_HourRaw & $3F       ' assume 24h mode (we force it in Settime)
-    B_Month   = B_Month   & $1F       ' clear century bit
-    B_Day     = B_DayRaw  & $07       ' 1..7 (binary)
-
-    ' BCD -> binary
+    B_HourRaw = B_HourRaw & $3F
+    B_Month   = B_Month   & $1F
+    B_Day     = B_DayRaw  & $07
     B_Seconds = B2BIN(B_Seconds)
     B_Minute  = B2BIN(B_Minute)
     B_Hour    = B2BIN(B_HourRaw)
@@ -1903,46 +1599,927 @@ Proc P_RTC_Gettime()
     B_Year    = B2BIN(B_Year)
 EndProc
 
-'---------------------------------------------------------------
-' Enable 1Hz on INT/SQW (pin 3), including while running from VBAT.
-' Leaves 32kHz pin disabled/enabled per your current Status bit.
-' Assumes you already defined:
-'   Symbol WriteRCT = %11010000
-'   Symbol ReadRTC  = %11010001
-
 Proc DS3231M_Enable1HzSQW()
     Dim B_Ctrl  As Byte
     Dim B_Stat  As Byte
     Dim B_Hraw  As Byte
-
-    '---- Control register (0Eh) ----
-    ' Bits: [7]=EOSC  [6]=BBSQW  [5]=CONV  [4:3]=NA  [2]=INTCN  [1]=A2IE  [0]=A1IE
-    ' We want: EOSC=0 (run), BBSQW=1 (square wave on VBAT), INTCN=0 (SQW mode),
-    '           A1IE=A2IE=0, CONV=0 (idle). NA bits can stay as-is.
     BusIn  Read_From_3231, $0E, [B_Ctrl]
-    B_Ctrl = B_Ctrl & %00011000     ' clear bits 7,6,5,2,1,0 (keep only NA bits [4:3])
-    B_Ctrl = B_Ctrl + %01000000     ' set BBSQW=1 (bit6). INTCN already 0 from the mask.
+    B_Ctrl = B_Ctrl & %00011000
+    B_Ctrl = B_Ctrl + %01000000
     BusOut Write_To_3231, $0E, [B_Ctrl]
-
-    '---- Status register (0Fh) ----
-    ' Bits: [7]=OSF  [3]=EN32KHZ  [2]=BSY (RO)  [1]=A2F  [0]=A1F  (6..4 unused=0)
-    ' Clear alarm flags and OSF. Leave EN32KHZ as-is (or clear it to save power).
     BusIn  Read_From_3231, $0F, [B_Stat]
-    B_Stat = B_Stat & %00001000     ' keep only EN32KHZ state; clear OSF,A2F,A1F
+    B_Stat = B_Stat & %00001000
     BusOut Write_To_3231, $0F, [B_Stat]
-
-    '---- Force 24-hour mode on Hours register (02h), preserve the BCD value ----
     BusIn  Read_From_3231, $02, [B_Hraw]
-    B_Hraw = B_Hraw & %10111111     ' clear bit6 (12/24 select) -> 24h mode
+    B_Hraw = B_Hraw & %10111111
     BusOut Write_To_3231, $02, [B_Hraw]
 EndProc
-'---------------------------------------------------------------
+
+' === Domain-specific editors ==================================================
+' Menu Timeout (MM:SS, 30..240 s)
+Proc P_MenuTimeout()
+    Dim B_Stored As Byte
+    Dim L_New    As Long
+
+    Clear b_Long : Clear b_MTimeout
+    Cls : Print At 1,1,"MENU TIMEOUT"
+
+    B_Stored = EEPROM_ReadByte(EE_B_Menu_Timeout)
+    If B_Stored < 30 Or B_Stored > 240 Then B_Stored = 120
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    L_New = P_TEdit(1, B_Stored, 30, 240)
+
+    If b_Long = 1 Then Clear b_Long : Cls : GoTo EXIT_P_MenuTimeout
+    If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Cls : GoTo EXIT_P_MenuTimeout
+
+    B_Menu_Timeout = L_New
+    EEPROM_WriteByte(EE_B_Menu_Timeout, B_Menu_Timeout)
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    P_Exit_OK()
+    Cls
+EXIT_P_MenuTimeout:
+EndProc
+
+' Edit a signed value at a specific line/column, rendering inside [     ].
+' Returns the committed value on SHORT press.
+' Long-press/timeout are *not* consumed here—caller should check P_UserAborted().
+Proc P_SignedAt(B_Ln As Byte, B_Col As Byte, S_Current As SWord, S_Min As SWord, S_Max As SWord, ByRef W_LastPos As Word), SWord
+    Dim S_Value   As SWord
+    Dim B_Changed As Byte
+    Dim W_Mag     As Word
+
+    ' Clamp start
+    S_Value = S_Current
+    If S_Value < S_Min Then S_Value = S_Min
+    If S_Value > S_Max Then S_Value = S_Max
+
+    ' Continue from caller's last encoder position
+    W_LastPos = W_EncoderPos
+    B_Changed = 1
+
+Draw_Field:
+    ' Draw a 5-char numeric field inside brackets at (B_Ln, B_Col-1)
+    Print At B_Ln, B_Col-1, "[     ]"
+    If S_Value < 0 Then
+        W_Mag = 0 - S_Value      ' absolute magnitude
+        Print At B_Ln, B_Col,   "-"
+        Print At B_Ln, B_Col+1, Dec4 W_Mag
+    Else
+        W_Mag = S_Value
+        Print At B_Ln, B_Col,   Dec5 W_Mag
+    EndIf
+
+    While 1 = 1
+        ' Let caller detect cancel paths
+        If b_Long = 1 Then Result = S_Value : GoTo Exit_P_SignedAt
+        If b_MTimeout = 1 Then Result = S_Value : GoTo Exit_P_SignedAt
+
+        ' Encoder up
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S_Value < S_Max Then
+                Inc S_Value
+                P_Beep(1)
+                B_Changed = 1
+            EndIf
+        EndIf
+
+        ' Encoder down
+        If W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S_Value > S_Min Then
+                Dec S_Value
+                P_Beep(1)
+                B_Changed = 1
+            EndIf
+        EndIf
+
+        If B_Changed = 1 Then
+            B_Changed = 0
+            GoTo Draw_Field
+        EndIf
+
+        ' Short press = commit and return
+        If B_ButtonState = 0 Then
+            P_Beep(2)
+            While B_ButtonState = 0
+                If b_Long = 1 Then Result = S_Value : GoTo Exit_P_SignedAt
+                DelayMS 10
+            Wend
+            Result = S_Value
+            GoTo Exit_P_SignedAt
+        EndIf
+
+        DelayMS 15
+    Wend
+Exit_P_SignedAt:
+EndProc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+' LCD Contrast (0..10)
+Proc P_SetContrast()
+    Dim W_LastPos As Word
+    Dim B_Val     As Byte
+
+    Cls : Print At 1,1,"Set Contrast"
+    Clear b_MTimeout : Clear b_Long
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    B_Val = B_Contrast : If B_Val > 10 Then B_Val = 10
+    Print At 4,1, Dec2 B_Val
+    W_LastPos = W_EncoderPos
+
+    While 1 = 1
+        If b_Long = 1 Then Clear b_Long : Cls : Return
+        If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Cls : Return
+
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 10 Then Inc B_Val : P_Beep(1) : Print At 4,1, Dec2 B_Val
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1) : Print At 4,1, Dec2 B_Val
+        EndIf
+
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Then Clear b_Long : Cls : GoTo EXIT_P_SetContrast
+                If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Cls : GoTo EXIT_P_SetContrast
+                DelayMS 10
+            Wend
+
+            P_Beep(2)
+            B_Contrast = B_Val
+            EEPROM_WriteByte(EE_B_Contrast, B_Contrast)
+            Cls
+            Return
+        EndIf
+        DelayMS 15
+    Wend
+EXIT_P_SetContrast:
+EndProc
+
+' Power-fail delay (MM:SS, 1..60 s) stored as Byte
+Proc P_SetPwrDelay()
+    Dim L_New As Long
+
+    Cls : Print At 1,1,"Pwr Fail Delay"
+    Clear b_Long : Clear b_MTimeout
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    L_New = P_TEdit(1, B_PwrFailDelay, 1, 60)
+
+    If b_Long = 1 Then Clear b_Long : Cls : Return
+    If b_MTimeout = 1 Then Clear b_MTimeout : P_P_Timeout() : Cls : Return
+
+    P_Beep(2)
+    B_PwrFailDelay = L_New
+    EEPROM_WriteByte(EE_B_PwrFailDelay, B_PwrFailDelay)
+    Cls
+EndProc
+
+' Relay pulse duration (MM:SS, 1..600 s) stored as WORD
+Proc P_SetPulse()
+    Dim W_Cur As Word
+    Dim L_New As Long
+
+    W_Cur = EEPROM_ReadWord(EE_W_RelayPulseSec)
+    If W_Cur < 1 Or W_Cur > 600 Then W_Cur = 5
+
+    Cls : Print At 1,1,"Set Pulse Duration"
+    L_New = P_TEdit(1, W_Cur, 1, 600)
+
+    If L_New = 0 Then
+        Clear b_Long : Clear b_MTimeout : Cls : GoTo Exit_P_SetPulse
+    EndIf
+
+    If L_New <> W_Cur Then EEPROM_WriteWord (EE_W_RelayPulseSec, L_New)
+Exit_P_SetPulse:
+EndProc
+'------------------------------------------------------------------------------------
+' Simplified P_Scale:
+' - Call: P_Scale(B_Type, B_Inpt)
+' - B_Type: 0=PSI (-500..+500), 1=DegC (-50..+150), 2=L/PS (0..500)
+' - B_Inpt: 1..3  (selects Input 1/2/3)
+' - Loads current values from EEPROM, clamps to type limits.
+' - Edits 4mA (flash) ? short press ? 20mA (flash) ? short press ? save+exit.
+' - Long press / timeout ? cancel (no save).
+'
+Proc P_Scale(B_Type As Byte, B_Inpt As Byte)
+    Dim S_Min As SWord, S_Max As SWord
+    Dim S_Units As String * 6
+    Dim EE_Addr4 As Byte, EE_Addr20 As Byte
+
+    Dim S4 As SWord, S20 As SWord
+    Dim S4_Orig As SWord, S20_Orig As SWord
+
+    Dim W_LastPos As Word
+    Dim B_Ticks As Byte, B_Flash As Byte, B_Changed As Byte
+
+    ' --- Units and bounds by type ---
+    Select B_Type
+        Case 0
+            S_Min = -500 : S_Max = 500 : S_Units = "PSI"
+        Case 1
+            S_Min =  -50 : S_Max = 150 : S_Units = "DegC"
+        Case Else
+            S_Min =    0 : S_Max = 500 : S_Units = "L/PS"
+    EndSelect
+
+    ' --- EEPROM addresses by input index ---
+    Select B_Inpt
+        Case 1
+            EE_Addr4  = EE_W_Con_2_4ma
+            EE_Addr20 = EE_W_Con_2_20ma
+        Case 2
+            EE_Addr4  = EE_W_Con_3_4ma
+            EE_Addr20 = EE_W_Con_3_20ma
+        Case Else
+            EE_Addr4  = EE_W_Con_4_4ma
+            EE_Addr20 = EE_W_Con_4_20ma
+    EndSelect
+
+    ' --- Load current values from EEPROM ---
+    S4  = EEPROM_ReadSWord(EE_Addr4)
+    S20 = EEPROM_ReadSWord(EE_Addr20)
+
+    ' --- Clamp to type limits ---
+    If S4  < S_Min Then S4  = S_Min
+    If S4  > S_Max Then S4  = S_Max
+    If S20 < S_Min Then S20 = S_Min
+    If S20 > S_Max Then S20 = S_Max
+
+    S4_Orig  = S4
+    S20_Orig = S20
+
+    ' --- Guards & header ---
+    Clear b_Long : Clear b_MTimeout : Clear b_ReInitLCD
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    Cls
+    Print At 1,1,"Input ",Dec B_Inpt," Scale"
+
+    ' Static labels and units
+    Print At 3,1," 4mA"
+    Print At 4,1,"20mA"
+    Print At 3,16,"     " : Print At 3,16,S_Units
+    Print At 4,16,"     " : Print At 4,16,S_Units
+
+    ' Initial numeric values (steady)
+    Print At 3,9,"      " : Print At 3,9,SDec S4
+    Print At 4,9,"      " : Print At 4,9,SDec S20
+
+    ' =========================
+    ' Phase 1: Edit 4 mA value
+    ' =========================
+    W_LastPos = W_EncoderPos
+    B_Ticks   = 0
+    B_Flash   = 1       ' 1=visible, 0=hidden
+    B_Changed = 1       ' force initial paint
+
+Edit_4mA:
+    While 1 = 1
+        ' Cancel (long press or timeout)
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            S4  = S4_Orig : S20 = S20_Orig
+            Cls
+            GoTo EXIT_P_Scale
+        EndIf
+
+        ' Encoder on 4 mA
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S4 < S_Max Then Inc S4 : B_Changed = 1 : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S4 > S_Min Then Dec S4 : B_Changed = 1 : P_Beep(1)
+        EndIf
+
+        ' Blink at ~2 Hz (33 * 15ms ˜ 495ms)
+        Inc B_Ticks
+        If B_Ticks >= 33 Then
+            B_Ticks = 0
+            B_Flash = ~B_Flash
+            B_Changed = 1
+        EndIf
+
+        ' Update numeric field only when needed
+        If B_Changed = 1 Then
+            B_Changed = 0
+            If B_Flash = 1 Then
+                Print At 3,9,"      " : Print At 3,9,SDec S4
+            Else
+                Print At 3,9,"      "
+            EndIf
+        EndIf
+
+        ' Short press ? accept 4 mA and move to 20 mA
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    S4  = S4_Orig : S20 = S20_Orig
+                    Cls
+                    GoTo EXIT_P_Scale
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            ' make 4 mA steady (ensure visible)
+            Print At 3,9,"      " : Print At 3,9,SDec S4
+            GoTo Edit_20mA
+        EndIf
+
+        DelayMS 15
+    Wend
+
+    ' =========================
+    ' Phase 2: Edit 20 mA value
+    ' =========================
+Edit_20mA:
+    W_LastPos = W_EncoderPos
+    B_Ticks   = 0
+    B_Flash   = 1
+    B_Changed = 1
+
+    While 1 = 1
+        ' Cancel (long press or timeout)
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            S4  = S4_Orig : S20 = S20_Orig
+            Cls
+            GoTo EXIT_P_Scale
+        EndIf
+
+        ' Encoder on 20 mA
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S20 < S_Max Then Inc S20 : B_Changed = 1 : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If S20 > S_Min Then Dec S20 : B_Changed = 1 : P_Beep(1)
+        EndIf
+
+        ' Blink at ~2 Hz
+        Inc B_Ticks
+        If B_Ticks >= 33 Then
+            B_Ticks = 0
+            B_Flash = ~B_Flash
+            B_Changed = 1
+        EndIf
+
+        ' Update numeric field only when needed
+        If B_Changed = 1 Then
+            B_Changed = 0
+            If B_Flash = 1 Then
+                Print At 4,9,"      " : Print At 4,9,SDec S20
+            Else
+                Print At 4,9,"      "
+            EndIf
+        EndIf
+
+        ' Short press ? commit to globals + EEPROM
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    S4  = S4_Orig : S20 = S20_Orig
+                    Cls
+                    GoTo EXIT_P_Scale
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+
+            Select B_Inpt
+                Case 1
+                    S_In_1_Scale_4  = S4
+                    S_In_1_Scale_20 = S20
+                    EEPROM_WriteSWord(EE_W_Con_2_4ma,  S4)
+                    EEPROM_WriteSWord(EE_W_Con_2_20ma, S20)
+                Case 2
+                    S_In_2_Scale_4  = S4
+                    S_In_2_Scale_20 = S20
+                    EEPROM_WriteSWord(EE_W_Con_3_4ma,  S4)
+                    EEPROM_WriteSWord(EE_W_Con_3_20ma, S20)
+                Case Else
+                    S_In_3_Scale_4  = S4
+                    S_In_3_Scale_20 = S20
+                    EEPROM_WriteSWord(EE_W_Con_4_4ma,  S4)
+                    EEPROM_WriteSWord(EE_W_Con_4_20ma, S20)
+            EndSelect
+
+            Cls
+            Return
+        EndIf
+
+        DelayMS 15
+    Wend
+
+EXIT_P_Scale:
+EndProc
+
+
+
+'---------------------------------------------------
+' Print a signed value as [sign + 4 digits with leading zeros]
+' Example: " 0036", "-0016"
+Proc P_PrintS4Z(B_Ln As Byte, B_Col As Byte, S_Val As SWord)
+    Dim W_Abs As Word
+    If S_Val < 0 Then
+        W_Abs = -S_Val
+        Print At B_Ln, B_Col, "-"
+    Else
+        W_Abs = S_Val
+        Print At B_Ln, B_Col, " "
+    EndIf
+    Print At B_Ln, B_Col + 1, Dec4 W_Abs
+EndProc
+
+' Map type -> units text used on the screen
+' 0=PSI, 1=Deg C, 2=L/PS, else "Units"
+Proc P_GetUnits(B_Type As Byte), String * 5
+    Select B_Type
+        Case 0
+            Result = " PSI"
+        Case 1
+            Result = " DegC"
+        Case 2
+            Result = " L/PS"
+        Case Else
+            Result = "Units"
+    End Select
+EndProc
+'---------------------------------------------------
+' Simplified output configuration editor.
+' Call:  P_Output(S_Title, B_Type, B_Inpt)
+'   S_Title : shown on line 1
+'   B_Type  : 0=Pressure, 1=Temperature, 2=Flow  (selects which fields are edited)
+'   B_Inpt  : 1..3 selects which input’s config word to edit
+'
+' Edits (by type):
+'  Pressure (0):  ME (bit2), High (7..8), Primary Low (9..10), Secondary Low (11..12), Display (13..14)
+'  Temperature(1): ME (bit2), High (7..8)
+'  Flow (2):      ME (bit2), High (7..8), Primary Low (9..10), Secondary Low (11..12), Display (13..14)
+'
+' EEPROM words: EE_W_Con_2_Cnfg / _3_ / _4_
+' Globals:      W_Con_2_Cnfg     / _3_ / _4_
+' 2-bit fields encoding: 00=NoAct, 01=Pulse, 10=Latch  (values 0..2)
+'
+Proc P_Output(S_Title As String * 18, B_Type As Byte, B_Inpt As Byte)
+    ' --- locals ---
+    Dim EE_Addr As Byte
+    Dim W_Cfg As Word, W_Orig As Word
+    Dim W_LastPos As Word
+    Dim B_Val As Byte          ' working selection for current field (0/1 or 0..2)
+    Dim B_Step As Byte         ' current step index
+    Dim B_LastVal As Byte      ' to avoid unnecessary redraws
+    Dim S_Line As String * 18  ' (unused temp; preserved)
+
+    ' --- select which input’s config word ---
+    Select B_Inpt
+        Case 1
+            EE_Addr = EE_W_In_1_Cnfg
+            W_Cfg   = W_In_1_Cnfg
+        Case 2
+            EE_Addr = EE_W_In_2_Cnfg
+            W_Cfg   = W_In_2_Cnfg
+        Case Else
+            EE_Addr = EE_W_In_3_Cnfg
+            W_Cfg   = W_In_3_Cnfg
+    EndSelect
+    ' authoritative read from EEPROM
+    W_Cfg  = EEPROM_ReadWord(EE_Addr)
+    W_Orig = W_Cfg
+
+    ' --- UI guards & header (pre) ---
+    Clear b_Long
+    Clear b_MTimeout
+    Clear b_ReInitLCD
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    Cls
+    Print At 1,1, S_Title
+
+    ' Swallow launching press, then re-arm flags/timer
+    P_Debounce()
+    Clear b_Long
+    Clear b_MTimeout
+    L_TimeoutRemain = B_Menu_Timeout * 1000
+
+    ' ===== jump over helper labels so they don't run inline =====
+    GoTo POut_Body
+
+' ====================== helper subs (label gosubs) =========================
+Label_GetBit:
+    ' uses: B_Val=bit# input; returns B_Val=0/1
+    Dim W_M As Word, B_I As Byte
+    W_M = 1
+    For B_I = 1 To B_Val
+        W_M = W_M * 2
+    Next
+    If W_Cfg & W_M <> 0 Then
+        B_Val = 1
+    Else
+        B_Val = 0
+    EndIf
+    Return
+
+Label_SetBit:
+    ' uses: B_Val=bit#, B_LastVal=new bit value (0/1)
+    Dim W_M2 As Word, B_J As Byte
+    W_M2 = 1
+    For B_J = 1 To B_Val
+        W_M2 = W_M2 * 2
+    Next
+    If B_LastVal = 0 Then
+        If W_Cfg & W_M2 <> 0 Then W_Cfg = W_Cfg - W_M2
+    Else
+        If W_Cfg & W_M2 = 0 Then W_Cfg = W_Cfg + W_M2
+    EndIf
+    Return
+
+GetPair:
+    ' uses: B_Val=startBit (LSB of the pair). Returns B_Val in 0..3
+    Dim W_M3 As Word, B_K As Byte, B_Lo As Byte, B_Hi As Byte
+    W_M3 = 1
+    For B_K = 1 To B_Val
+        W_M3 = W_M3 * 2
+    Next
+    If W_Cfg & W_M3 <> 0 Then
+        B_Lo = 1
+    Else
+        B_Lo = 0
+    EndIf
+    W_M3 = W_M3 * 2
+    If W_Cfg & W_M3 <> 0 Then
+        B_Hi = 1
+    Else
+        B_Hi = 0
+    EndIf
+    B_Val = B_Lo + (B_Hi * 2)
+    Return
+
+SetPair:
+    ' uses: B_Val=startBit, B_LastVal=new value (0..3)
+    Dim W_M4 As Word, B_T As Byte
+    Dim B_LoN As Byte, B_HiN As Byte
+    W_M4 = 1
+    For B_T = 1 To B_Val
+        W_M4 = W_M4 * 2
+    Next
+    ' clear existing two bits
+    If W_Cfg & W_M4 <> 0 Then W_Cfg = W_Cfg - W_M4
+    If W_Cfg & (W_M4 * 2) <> 0 Then W_Cfg = W_Cfg - (W_M4 * 2)
+    ' add new
+    B_LoN = B_LastVal & 1
+    B_HiN = (B_LastVal & 2) / 2
+    If B_LoN = 1 Then W_Cfg = W_Cfg + W_M4
+    If B_HiN = 1 Then W_Cfg = W_Cfg + (W_M4 * 2)
+    Return
+
+DrawTwoChoice_ME:
+    ' Line 3 baseline and brackets for Master Enable (Disabled/Enabled)
+    Print At 3,1,"                    "
+    Print At 3,2,"Disabled"
+    Print At 3,12,"Enabled"
+    ' clear brackets
+    Print At 3,1," "
+    Print At 3,10," "
+    Print At 3,11," "
+    Print At 3,19," "
+    ' draw selected pair
+    If B_Val = 0 Then
+        Print At 3,1,"["  : Print At 3,10,"]"
+    Else
+        Print At 3,11,"[" : Print At 3,19,"]"
+    EndIf
+    Return
+
+DrawOneOfThree:
+    ' Shows current 3-state as bracketed token on line 3
+    Print At 3,1,"                    "
+    Select B_Val
+        Case 0
+            Print At 3,7,"[NoAct]"
+        Case 1
+            Print At 3,7,"[Pulse]"
+        Case Else
+            Print At 3,7,"[Latch]"
+    EndSelect
+    Return
+
+DrawFieldTitle:
+    ' Print line 2 title based on B_Type and B_Step
+    Print At 2,1,"                    "
+    If B_Type = 0 Then             ' Pressure
+        Select B_Step
+            Case 0
+                Print At 2,1,"Master Enable"
+            Case 1
+                Print At 2,1,"High Pressure"
+            Case 2
+                Print At 2,1,"Primary LP"
+            Case 3
+                Print At 2,1,"Secondary LP"
+            Case 4
+                Print At 2,1,"Display"
+        EndSelect
+    ElseIf B_Type = 1 Then         ' Temperature
+        Select B_Step
+            Case 0
+                Print At 2,1,"Master Enable"
+            Case 1
+                Print At 2,1,"High Temp"
+        EndSelect
+    Else                           ' Flow
+        Select B_Step
+            Case 0
+                Print At 2,1,"Master Enable"
+            Case 1
+                Print At 2,1,"High Flow"
+            Case 2
+                Print At 2,1,"Primary Low Flow"
+            Case 3
+                Print At 2,1,"Secondary Low Flow"
+            Case 4
+                Print At 2,1,"Display"
+        EndSelect
+    EndIf
+    Return
+' ==================== end helpers ==========================================
+
+POut_Body:
+    ' determine number of steps for this type (for reference)
+    Dim B_Total As Byte
+    If B_Type = 1 Then
+        B_Total = 2          ' Temp: ME + High
+    Else
+        B_Total = 5          ' Pressure/Flow
+    EndIf
+
+    ' ---- Step 0: Master Enable (bit 2) ----
+    B_Step = 0
+Step_ME:
+    GoSub DrawFieldTitle
+    B_Val = 2 : GoSub Label_GetBit            ' returns B_Val = 0/1
+    B_LastVal = 255
+    GoSub DrawTwoChoice_ME
+    W_LastPos = W_EncoderPos
+    While 1 = 1
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            W_Cfg = W_Orig : Cls : Return
+        EndIf
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 1 Then Inc B_Val : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1)
+        EndIf
+        If B_Val <> B_LastVal Then
+            B_LastVal = B_Val : GoSub DrawTwoChoice_ME
+        EndIf
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    W_Cfg = W_Orig : Cls : Return
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            B_LastVal = B_Val
+            B_Val = 2 : GoSub Label_SetBit
+            Break
+        EndIf
+        DelayMS 15
+    Wend
+
+    If B_Type = 1 Then
+        B_Step = 1 : GoSub DrawFieldTitle
+        GoTo Step_HighOnly
+    Else
+        GoTo Step_High
+    EndIf
+
+    ' ---- Step 1: High action (bits 7..8) ----
+Step_High:
+    B_Step = 1 : GoSub DrawFieldTitle
+Step_HighOnly:
+    B_Val = 7 : GoSub GetPair
+    If B_Val > 2 Then B_Val = 2
+    B_LastVal = 255 : GoSub DrawOneOfThree
+    W_LastPos = W_EncoderPos
+    While 1 = 1
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            W_Cfg = W_Orig : Cls : Return
+        EndIf
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 2 Then Inc B_Val : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1)
+        EndIf
+        If B_Val <> B_LastVal Then
+            B_LastVal = B_Val : GoSub DrawOneOfThree
+        EndIf
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    W_Cfg = W_Orig : Cls : Return
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            B_LastVal = B_Val : B_Val = 7 : GoSub SetPair
+            Break
+        EndIf
+        DelayMS 15
+    Wend
+
+    If B_Type = 1 Then
+        GoTo Commit_Save
+    EndIf
+
+    ' ---- Step 2: Primary Low (bits 9..10) ----
+    B_Step = 2 : GoSub DrawFieldTitle
+    B_Val = 9 : GoSub GetPair
+    If B_Val > 2 Then B_Val = 2
+    B_LastVal = 255 : GoSub DrawOneOfThree
+    W_LastPos = W_EncoderPos
+    While 1 = 1
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            W_Cfg = W_Orig : Cls : Return
+        EndIf
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 2 Then Inc B_Val : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1)
+        EndIf
+        If B_Val <> B_LastVal Then
+            B_LastVal = B_Val : GoSub DrawOneOfThree
+        EndIf
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    W_Cfg = W_Orig : Cls : Return
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            B_LastVal = B_Val : B_Val = 9 : GoSub SetPair
+            Break
+        EndIf
+        DelayMS 15
+    Wend
+
+    ' ---- Step 3: Secondary Low (bits 11..12) ----
+    B_Step = 3 : GoSub DrawFieldTitle
+    B_Val = 11 : GoSub GetPair
+    If B_Val > 2 Then B_Val = 2
+    B_LastVal = 255 : GoSub DrawOneOfThree
+    W_LastPos = W_EncoderPos
+    While 1 = 1
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            W_Cfg = W_Orig : Cls : Return
+        EndIf
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 2 Then Inc B_Val : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1)
+        EndIf
+        If B_Val <> B_LastVal Then
+            B_LastVal = B_Val : GoSub DrawOneOfThree
+        EndIf
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    W_Cfg = W_Orig : Cls : Return
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            B_LastVal = B_Val : B_Val = 11 : GoSub SetPair
+            Break
+        EndIf
+        DelayMS 15
+    Wend
+
+    ' ---- Step 4: Display (bits 13..14) ----
+    B_Step = 4 : GoSub DrawFieldTitle
+    B_Val = 13 : GoSub GetPair
+    If B_Val > 2 Then B_Val = 2
+    B_LastVal = 255
+    Print At 3,1,"                    "
+    Select B_Val
+        Case 0
+            Print At 3,6,"[NoDisp]"
+        Case 1
+            Print At 3,7,"[Always]"
+        Case Else
+            Print At 3,6,"[WhenEn]"
+    EndSelect
+    W_LastPos = W_EncoderPos
+    While 1 = 1
+        If b_Long = 1 Or b_MTimeout = 1 Then
+            Clear b_Long : b_MTimeout = 0
+            W_Cfg = W_Orig : Cls : Return
+        EndIf
+        If W_EncoderPos > W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val < 2 Then Inc B_Val : P_Beep(1)
+        ElseIf W_EncoderPos < W_LastPos Then
+            W_LastPos = W_EncoderPos
+            If B_Val > 0 Then Dec B_Val : P_Beep(1)
+        EndIf
+        If B_Val <> B_LastVal Then
+            B_LastVal = B_Val
+            Print At 3,1,"                    "
+            Select B_Val
+                Case 0
+                    Print At 3,6,"[NoDisp]"
+                Case 1
+                    Print At 3,7,"[Always]"
+                Case Else
+                    Print At 3,6,"[WhenEn]"
+            EndSelect
+        EndIf
+        If B_ButtonState = 0 Then
+            While B_ButtonState = 0
+                If b_Long = 1 Or b_MTimeout = 1 Then
+                    Clear b_Long : b_MTimeout = 0
+                    W_Cfg = W_Orig : Cls : Return
+                EndIf
+                DelayMS 10
+            Wend
+            P_Beep(2)
+            B_LastVal = B_Val : B_Val = 13 : GoSub SetPair
+            Break
+        EndIf
+        DelayMS 15
+    Wend
+
+Commit_Save:
+    ' commit to globals and EEPROM
+    Select B_Inpt
+        Case 1
+            W_In_1_Cnfg = W_Cfg
+        Case 2
+            W_In_2_Cnfg = W_Cfg
+        Case Else
+            W_In_3_Cnfg = W_Cfg
+    EndSelect
+    EEPROM_WriteWord(EE_Addr, W_Cfg)
+
+    Cls
+    Return
+EndProc
+
+
+
+'---------------------------------------------------------------------------
+' Shared helper: returns 1 if user cancelled (long-press or timeout).
+' - Clears b_Long / b_MTimeout
+' - Sets b_Escape
+' - Beeps (long) if buzzer idle
 Proc P_UserAborted(), Bit
-    ' Returns 1 if the user long-pressed OR the menu timer expired.
     If b_Long = 1 Then
         Clear b_Long
         b_Escape = 1
-        If B_BeepLen = 0 Then P_Beep(5)   ' long beep once
+        If B_BeepLen = 0 Then P_Beep(5)
         Result = 1
         GoTo Exit_P_UserAborted
     EndIf
@@ -1958,215 +2535,5 @@ Proc P_UserAborted(), Bit
     Result = 0
 Exit_P_UserAborted:
 EndProc
-'---------------------------------------------------------------
-Proc P_UI_ResetTimer()
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-    b_MTimeout = 0
-EndProc
 
-'--------------------------------------------
-' Edit and save the menu timeout (MM:SS, 30–240 s).
-' Uses P_HH_BoundedSimple(B_Mode=1, current, L_Min, L_Max).
-Proc P_MenuTimeout()
-    Dim B_Stored As Byte
-    Dim L_New    As Long
 
-    ' Clear any stale flags and show a title
-    Clear b_Long
-    Clear b_MTimeout
-    Cls
-    Print At 1,1,"MENU TIMEOUT"
-    'Print At 2,1,"(MM:SS, 00:30..04:00)"
-
-    ' Load current (seconds) from EEPROM, clamp to safe default if out of range
-    B_Stored = EEPROM_ReadByte(EE_B_Menu_Timeout)
-    If B_Stored < 30 Or B_Stored > 240 Then B_Stored = 120  ' default 2:00
-
-    ' Kick the inactivity timer so user has full time to edit
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-
-    ' Edit with total-seconds bounds; long-press/timeout returns original
-    L_New = P_TEdit(1, B_Stored, 30, 240)
-
-    ' Cancel paths: long-press or timeout -> no commit
-    If b_Long = 1 Then
-        Clear b_Long
-        Cls
-        GoTo EXIT_P_MenuTimeout
-    End If
-    If b_MTimeout = 1 Then
-        Clear b_MTimeout
-        P_P_Timeout()
-        Cls
-        GoTo EXIT_P_MenuTimeout
-    End If
-
-    ' Commit (L_New is within 30..240, fits in Byte)
-    B_Menu_Timeout = L_New
-    EEPROM_WriteByte(EE_B_Menu_Timeout, B_Menu_Timeout)
-
-    ' Refresh inactivity timer to the new value
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-
-    ' Positive feedback and leave
-    P_Exit_OK()
-    Cls
-    EXIT_P_MenuTimeout:
-
-EndProc
-'--------------------------------------------
-' Edit LCD contrast (0..10). 
-' - Title at line 1, col 1
-' - Value shown/edited at line 4, col 1 (two digits)
-' - Short press = accept and save to EEPROM
-' - Long press or timeout = cancel (no changes)
-Proc P_SetContrast()
-    Dim W_LastPos As Word
-    Dim B_Val     As Byte
-
-    Cls
-    Print At 1,1,"Set Contrast"
-
-    ' Start / guards
-    Clear b_MTimeout
-    Clear b_Long
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-
-    ' Load current and clamp
-    B_Val = B_Contrast
-    If B_Val > 10 Then B_Val = 10
-    Print At 4,1, Dec2 B_Val
-
-    W_LastPos = W_EncoderPos
-
-    While 1 = 1
-        ' ---- cancel paths ----
-        If b_Long = 1 Then
-            Clear b_Long
-            Cls
-            Return                 ' no change
-        EndIf
-        If b_MTimeout = 1 Then
-            Clear b_MTimeout
-            P_P_Timeout()          ' timeout tone
-            Cls
-            Return                 ' no change
-        EndIf
-
-        ' ---- encoder movement ----
-        If W_EncoderPos > W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val < 10 Then
-                Inc B_Val
-                P_Beep(1)
-                Print At 4,1, Dec2 B_Val
-            EndIf
-        ElseIf W_EncoderPos < W_LastPos Then
-            W_LastPos = W_EncoderPos
-            If B_Val > 0 Then
-                Dec B_Val
-                P_Beep(1)
-                Print At 4,1, Dec2 B_Val
-            EndIf
-        EndIf
-
-        ' ---- short press = accept ----
-        If B_ButtonState = 0 Then
-            ' wait for release; still honor cancel during hold
-            While B_ButtonState = 0
-                If b_Long = 1 Then
-                    Clear b_Long
-                    Cls
-                    GoTo EXIT_P_SetContrast
-                EndIf
-                If b_MTimeout = 1 Then
-                    Clear b_MTimeout
-                    P_P_Timeout()
-                    Cls
-                    GoTo EXIT_P_SetContrast
-                EndIf
-                DelayMS 10
-            Wend
-
-            ' accept
-            P_Beep(2)
-            B_Contrast = B_Val
-            EEPROM_WriteByte(EE_B_Contrast, B_Contrast)
-            Cls
-            Return
-        EndIf
-
-        DelayMS 15
-    Wend
-    EXIT_P_SetContrast:
-EndProc
-'--------------------------------------------
-' Edit the power-fail delay (0..60 seconds) using P_TEdit (MM:SS)
-Proc P_SetPwrDelay()
-    Dim L_New As Long
-
-    Cls
-    Print At 1,1,"Pwr Fail Delay"
-
-    ' Clear/arm UI guards
-    Clear b_Long
-    Clear b_MTimeout
-    L_TimeoutRemain = B_Menu_Timeout * 1000
-
-    ' Edit in MM:SS (mode=1), bounds 0..60 s
-    L_New = P_TEdit(1, B_PwrFailDelay, 1, 60)
-
-    ' Cancel paths: long-press or timeout -> no change
-    If b_Long = 1 Then
-        Clear b_Long
-        Cls
-        Return
-    EndIf
-    If b_MTimeout = 1 Then
-        Clear b_MTimeout
-        P_P_Timeout()
-        Cls
-        Return
-    EndIf
-
-    ' Accept: save (seconds fit in a byte)
-    P_Beep(2)
-    B_PwrFailDelay = L_New
-    EEPROM_WriteByte (EE_B_PwrFailDelay, B_PwrFailDelay)
-    Cls
-EndProc
-'--------------------------------------------
-' Edit Pulse Duration (MM:SS). Uses P_TEdit(mode=1).
-' - Reads WORD seconds from EE_W_RelayPulseSec (migrates from old byte if needed)
-' - Min = 1s, Max = 600s (10 min)
-' - Long-press / timeout cancel inside P_TEdit -> returns 0 (no save)
-
-Proc P_SetPulse()
-    Dim W_Cur As Word
-    Dim L_New As Long
-
-    ' Read current; seed a sensible default if empty/out of range
-    W_Cur = EEPROM_ReadWord(EE_W_RelayPulseSec)
-    If W_Cur < 1 Or W_Cur > 600 Then W_Cur = 5
-
-    Cls
-    Print At 1,1,"Set Pulse Duration"
-
-    ' mode=1 -> MM:SS; returns 0 on cancel (timeout/long-press handled inside)
-    L_New = P_TEdit(1, W_Cur, 1, 600)
-
-    If L_New = 0 Then
-        ' cancelled: no write
-        Clear b_Long
-        Clear b_MTimeout
-        Cls
-        GoTo Exit_P_SetPulse
-    EndIf
-
-    If L_New <> W_Cur Then
-        EEPROM_WriteWord (EE_W_RelayPulseSec, L_New)
-    EndIf
-
-Exit_P_SetPulse:
-EndProc
-'--------------------------------------------
