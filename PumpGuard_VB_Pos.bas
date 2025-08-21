@@ -27,7 +27,7 @@ S0/S1                       01=pressure
 ME                          1=enabled
 
 03-04   Indiv Enable        00=high and low disabled
-IE0/IE1                     01=low disabled, high enabled
+IE0/IE1                     01=low disabled, high enabled                         
                             10=low enabled, high disabled
                             11=low enabled, high enabled
                         
@@ -53,17 +53,86 @@ D0/D1                       01=always display
 
 '-------------------------------------------------------------
 Procedure for setting up inputs
-1 - define type (Digital, Pressssure, Temp, Flow'
-2 - If Digital then set fail high/ fail low, then set Pulse, Latch, no action
+Meeting with Damien 20/8/25
 
-3 - If Pressure then set scale
-4 - set rly action for High, Primary Low, Secondary low (Latch, Pulse)
+Don't use 'BACK' stick to the long press (not quite as long as it is now)
+
+Manu Options are 
+1 - Main Menu
+2 - Setup Menu
+3 - Utility Menu
+4 - Config Menu
+
+Main Menu - depends on what is enabled / disabled
+    
 
 
+Setup Menu - procedure
+1   Select input (Input 1,2,3)
+2 - Enable Disable (Skip the input setup if disabled)
+3 - Select Pressure, Temperature, Flow
+4 - work through the following (as a scrollable screen - depending on the type) for each input
+   
+    INPUT X
+    PRESSURE
+    Scale 4ma           [nnnn] PSI
+    Scale 20ma          [NNNN] PSI
+    Set High BP         [00:00] mm:ss
+    Set PLP BP          [00:00] mm:ss
+    Set SLP BP          [00:00] mm:ss      
+    Rly High            [Latch/Pulse/Off]   (same as enabling / disabling the protection)            
+    Rly PLP             [Latch/Pulse/Off] 
+    Rly SLP             [Latch/Pulse/Off]
+    Display Pressure    [Yes/No]
+     
+    INPUT X
+    TEMPERATURE
+    Scale 4ma           [nnnn] Deg C
+    Scale 20ma          [NNNN] Deg C
+    Set High BP         [00:00] mm:ss
+    Set Low BP          [00:00] mm:ss
+    Rly High            [Latch/Pulse/Off]            
+    Rly Low             [Latch/Pulse/Off]
+    Display Temp        [Yes/No]
+    
+    INPUT X
+    FLOW
+    Sensor              [Digital/Analogue]
+    If Analogue
+        Units           [%/LPS]
+        Scale 4ma       [nnnn]
+        Scale 20ma      [NNNN}
+        Set Low BP      [00:00] mm:ss
+        Rly Lo Flow BP  [Latch/Pulse/Off]
+        Rly High        [Latch/Pulse/Off]
+        Rly Low         [Latch/Pulse/Off]
 
+    If Digital                                  Units could be 'Flo/NoFlo' 
+        Set Flow BP     [00:00] mm:ss
+        No Flow         [Latch/Pulse/Off]
 
+    Display Flow        [Yes/No]    
+    
+5 - Use Clock           [Yes/No]                Consider short cut on main menu by setting 0 hours 
+    End Runtime         [Latch/Pulse/Off]    
+   
+    
+6 - Utility Menu
+    View Log            [Yes/No]
+    Clear Log           [Yes/No]
 
+7 - Config Menu
+    Time                [dd/mm/yy/ hh:mm:ss]       'Can't do this on 1 line
+    Menu Timeout        [00:00] mm:ss
+    Contrast            [0-10]
+    Brightness          [0-10]
+    Pwr Fail Delay      [00:00] mm:ss
+    Rly Pulse Duration  [00:00] mm:ss    
+    Max Log Entries     [10-200]
 
+    
+
+    
 
 
 
@@ -151,8 +220,8 @@ Declare Slow_Bus On
 ' USART
 Declare Hserial_Baud  = 115200
 Declare Hserial_Clear = 1
-Declare HRSOut_Pin    = PORTB.6
-Declare HRSIn_Pin     = PORTB.7
+Declare HRSOut_Pin    = PORTC.6
+Declare HRSIn_Pin     = PORTC.7
 
 ' LCD declares
 Declare LCD_Type      = 0
@@ -228,8 +297,8 @@ Dim L_Last_Run          As Long
 Dim L_TimeoutRemain     As Long
 Dim b_Escape            As Bit
 Dim b_Isolate As Bit
-Dim S_4_Min As SWord
-Dim S_20_Min As SWord
+'Dim S_4_Min As SWord
+'Dim S_20_Min As SWord
 
 
 ' === Constants ================================================================
@@ -339,7 +408,7 @@ ISR_Handler:
              ' A debounce (~10-20 ms)
             If B_NewA <> B_AState Then
                 Inc B_DebA
-                If B_DebA >= 1 Then           ' was 2  -> now ~40 ms
+                If B_DebA >= 2 Then           ' Now 2  -> ~20 ms
                     B_AState = B_NewA
                     B_DebA = 0
                 EndIf
@@ -350,7 +419,7 @@ ISR_Handler:
             ' B debounce (~10-20 ms)
             If B_NewB <> B_BState Then
                 Inc B_DebB
-                If B_DebB >= 1 Then           ' was 2  -> now ~40 ms
+                If B_DebB >= 2 Then           ' now 2  -> ~20 ms
                     B_BState = B_NewB
                     B_DebB = 0
                 EndIf
@@ -382,9 +451,9 @@ ISR_Handler:
             If b_Isolate = 0 Then                                ' ignore while user holds knob
                 ' Accumulate intermediate transitions (directional)
                 Select B_Combined
-                    Case 0b0001, 0b0111, 0b1110, 0b1000          ' leftward edge set
+                    Case %0001, %0111, %1110, %1000             ' leftward edge set
                         Dec S_Qacc
-                    Case 0b0010, 0b1011, 0b1101, 0b0100          ' rightward edge set
+                    Case %0010, %1011, %1101, %0100             ' rightward edge set
                         Inc S_Qacc
                 EndSelect
 
@@ -616,14 +685,20 @@ Menus:
                     GoTo Setup_Menu
                 Case 10                                 'SETUP INPUT 1
                     'Decide on the type
-                    B_Option = P_MenuList8("Input 1",21, 16, 17, 18,20,0,0,0)                   'Dig, Pressure, temp, flow
+                    B_Option = P_MenuList8("Input 1",27, 21, 16, 17, 18,20,0,0)                 'Not Used Dig, Pressure, temp, flow
                     Select B_Option                                                             'set the config register     
                         'DIGITAL setup
                          Clear W_In_1_Cnfg                                                      'start from scratch
-                         Case 21                                                                'digital
+                         
+                         Case 27                                                                'case 27  'NOT used
+                            'clear DF1/DF0 if not used
+                            ClearBit W_In_1_Cnfg,5                         
+                            GoTo Setup_Menu                                                     'back to the setup menu                           
+                         Case 21
                             'clear S0/S1 for digital input
                              ClearBit W_In_1_Cnfg,0
                              ClearBit W_In_1_Cnfg,1                                              'set the digital                                                        
+                             
                              B_Option = P_MenuList8("Input 1 Digital",22,23,27,0,0,0,0,0)        'if digital - fail high or fail low  
                              Select B_Option
                                 Case 22                                                         'fail high
@@ -631,15 +706,14 @@ Menus:
                                     'clear DF0  for Fail high                                                                        
                                     SetBit W_In_1_Cnfg,5
                                     ClearBit W_In_1_Cnfg,6                                   
+                                
                                 Case 23                                                         'fail low
                                     'clear DF1
                                     'Set DF0 for fail low
                                     ClearBit W_In_1_Cnfg,6
                                     SetBit W_In_1_Cnfg,6
-                                Case 27                                                         'not used                                 
-                                    'clear DF1/DF0 if not used
-                                    ClearBit W_In_1_Cnfg,5
                                     ClearBit W_In_1_Cnfg,6
+                                
                                 Case Else
                                     GoTo EXIT_Menus
                             EndSelect                            
@@ -650,17 +724,20 @@ Menus:
                                     'clear FAH1 for PULSE
                                     SetBit W_In_1_Cnfg,07
                                     ClearBit W_In_1_Cnfg,08                                                                                                           
-                                Case 25                                                         'Latch
+                                Case 25
+                                                                                         'Latch
                                     'clear FAH0
                                     'set FAH1 for Latch
                                     SetBit W_In_1_Cnfg,08
                                     ClearBit W_In_1_Cnfg,07    
-                                Case 28                                                         'No Action
+                                Case 28
+                                                                                         'No Action
                                     'cleaf FAH0
                                     'clear FAH1 for NOT USED                                    
                                     ClearBit W_In_1_Cnfg,07
                                     ClearBit W_In_1_Cnfg,08                                    
                                 Case Else
+                                
                             EndSelect
                             'END DIGITAL SETUP FOR NOW                            
 
@@ -1014,7 +1091,7 @@ Dim S_String40_F  As Flash8 = "Extra Item 20", 0
 
 ' Lookup by absolute ID (1..40)
 Proc P_GetMenuString(B_ID As Byte), String * 18
-    Select Case B_ID
+    Select B_ID
         Case 1
             Result = S_String1_F
         Case 2
@@ -1917,7 +1994,7 @@ Edit_4mA:
 
         ' Blink at ~2 Hz (33 * 15ms ˜ 495ms)
         Inc B_Ticks
-        If B_Ticks >= 33 Then
+        If B_Ticks >= SCALE_BLINK_TICKS Then
             B_Ticks = 0
             B_Flash = ~B_Flash
             B_Changed = 1
@@ -1982,7 +2059,7 @@ Edit_20mA:
 
         ' Blink at ~2 Hz
         Inc B_Ticks
-        If B_Ticks >= 33 Then
+        If B_Ticks >= SCALE_BLINK_TICKS Then
             B_Ticks = 0
             B_Flash = ~B_Flash
             B_Changed = 1
